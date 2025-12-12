@@ -1,0 +1,150 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+.venv
+env.bak/
+venv.bak/
+
+# Environment variables (keep .env.example)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Project specific - Data files
+# FAISS vector store
+data/embeddings/
+backend/data/embeddings/
+*.index
+*.faiss
+
+# Uploaded documents
+data/documents/
+backend/data/documents/
+*.pdf
+*.docx
+*.doc
+# Keep test documents if needed
+# !tests/data/
+
+# ChromaDB database (legacy, not used in current implementation)
+chroma_db/
+
+# Logs
+*.log
+logs/
+*.log.*
+rag_system.log
+frontend_debug.log
+streamlit_error.log
+
+# Model cache (Sentence Transformers downloads models)
+.cache/
+models/
+*.bin
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.h5
+*.ckpt
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/config.toml  # User-specific config
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+*.py,cover
+.cache
+nosetests.xml
+coverage.xml
+*.coveragerc
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Compressed files (if not needed in repo)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# API keys and secrets (extra safety)
+*_key.txt
+*_secret.txt
+secrets/
+.secrets/
