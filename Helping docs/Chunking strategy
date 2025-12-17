@@ -1,0 +1,50 @@
+Que- 
+1) Can we apply chunking based on the data pattern whenever a user uploads a document of a particular type?
+ Different chunking techniques are used for paragraphs, tables, and data patterns regardless of file type.
+
+Ans-
+yes. You can (and should) apply pattern‑aware chunking at upload time, so that paragraphs, tables, and structured data patterns are chunked differently, independent of file type (PDF, DOCX, HTML, etc.).
+How to think about it
+Step 1 – Normalize by file type
+Extract text + structure:
+PDF → layout/blocks, tables (e.g., pdfplumber, PyMuPDF, Azure Form Recognizer)
+DOCX → paragraphs, headings, tables (e.g., python-docx)
+HTML → DOM elements, lists, tables
+Goal: convert everything into a common intermediate format, e.g. a list of blocks with type & metadata:
+type: paragraph | heading | table | list | code | pattern_block | other
+content: raw text or serialized table
+metadata: page, section, coordinates, etc.
+Step 2 – Detect data patterns (independent of file type)
+Run pattern detectors over each block:
+Regex / heuristics: key–value pairs, bullet lists, logs, JSON‑like blobs, IDs, timestamps, SKUs, etc.
+ML classifiers (optional): label blocks as “narrative text”, “table”, “FAQ”, “key-value block”, etc.
+Update each block’s block_subtype, e.g. kv_block, faq, log_block.
+Step 3 – Apply chunking strategy per (sub)type
+Paragraph / narrative text
+Recursive text splitter (by headings → paragraphs → sentences → tokens), controlling token size & overlap.
+Tables
+Options:
+Per row chunk (row + header context)
+Group of N rows
+Full table + summary
+Store both structured form (JSON/CSV) and linearized text for embedding.
+Key–value or pattern blocks
+Keep small atomic chunks (e.g. a KV group, a single log record) with no or minimal overlap.
+Sometimes add a small narrative context window before/after.
+All of this is driven by block.type / block.subtype, not by original file type.
+Step 4 – Persist rich metadata
+For each final chunk, store:
+chunk_type: paragraph_chunk | table_row_chunk | table_chunk | kv_chunk | log_chunk | ...
+original file_id, page, section, coords, heading_path, etc.
+This lets you:
+Tune retrieval (e.g. “prefer table_row_chunk for numeric queries”),
+Post‑process (e.g. rebuild an entire table from multiple row chunks).
+Implementation sketch (high level)
+Upload pipeline
+Detect file type.
+Run type‑specific parser → normalized blocks.
+Run pattern detectors → enrich block metadata.
+Route each block to the appropriate chunker based on type/subtype.
+Embed & index chunks in your vector store / hybrid index.
+Key design point
+You’re not “chunking by file type”, you’re chunking by structure and pattern, which you infer after parsing. That means the same table‑chunking logic handles tables from PDFs, DOCXs, or HTML; similarly for paragraphs and structured data blocks.

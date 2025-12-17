@@ -129,6 +129,39 @@ def query_rag(question: str, top_k: int = 5) -> Dict[str, Any]:
         return {"answer": f"Unexpected error: {str(e)}", "sources": []}
 
 
+def generate_quiz(num_questions: int = 5) -> Dict[str, Any]:
+    """
+    Call the backend to generate a quiz.
+
+    Args:
+        num_questions: Number of questions to request
+
+    Returns:
+        Response dictionary
+    """
+    try:
+        response = requests.post(
+            f"{API_URL}/quiz",
+            json={"num_questions": num_questions},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.Timeout:
+        return {"error": "Quiz generation timeout."}
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 400:
+            return {"error": "No documents loaded. Please upload documents first."}
+        elif e.response.status_code == 503:
+            return {"error": "LLM service unavailable. Please check backend configuration."}
+        else:
+            return {"error": f"Error: {e.response.text}"}
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Connection error: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {str(e)}"}
+
+
 def get_document_count() -> int:
     """Get document count from API."""
     try:
@@ -149,6 +182,14 @@ def clear_documents() -> bool:
     except:
         return False
 
+
+# Initialize session state FIRST (before any sidebar operations)
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "last_upload_result" not in st.session_state:
+    st.session_state.last_upload_result = None
+if "quiz" not in st.session_state:
+    st.session_state.quiz = []
 
 # UI
 st.title("💬 RAG Chatbot")
@@ -171,9 +212,9 @@ with st.sidebar:
     
     uploaded_files = st.file_uploader(
         "Choose files",
-        type=["pdf", "docx", "txt", "md"],
+        type=["pdf", "docx", "txt", "md", "csv", "xlsx", "xls", "pptx", "html", "htm", "xml", "png", "jpg", "jpeg"],
         accept_multiple_files=True,
-        help="Upload PDF, DOCX, TXT, or Markdown files"
+        help="Upload documents in various formats"
     )
     
     if st.button("Upload", type="primary", use_container_width=True):
@@ -181,13 +222,33 @@ with st.sidebar:
             with st.spinner("Processing files..."):
                 result = upload_files(uploaded_files)
                 if "results" in result:
+                    st.session_state.last_upload_result = result  # Store in session state
                     st.success(f"✅ Uploaded {len(result['results'])} file(s)")
                     st.write(f"**Total chunks:** {result.get('total_chunks', 0)}")
                     
-                    # Show individual results
+                    # Show individual results with pattern info at the top
                     for file_result in result.get("results", []):
                         if file_result.get("status") == "ok":
-                            st.write(f"  ✓ {file_result.get('filename')}: {file_result.get('chunks', 0)} chunks")
+                            st.markdown(f"### ✓ {file_result.get('filename')}")
+                            
+                            # Display patterns prominently
+                            patterns = file_result.get("patterns") or []
+                            chunking = file_result.get("chunking") or {}
+                            
+                            if patterns:
+                                pattern_str = " | ".join(p.capitalize() for p in patterns)
+                                st.info(f"📊 **Detected Data Patterns**: {pattern_str}")
+                            
+                            # Display file stats
+                            st.markdown(f"**Chunks Created**: {file_result.get('chunks', 0)}")
+                            
+                            # Display chunking strategies used
+                            if chunking:
+                                st.markdown("**Chunking Strategies Applied:**")
+                                for p_type, desc in chunking.items():
+                                    st.markdown(f"- **{p_type.capitalize()}**: {desc}")
+                            
+                            st.divider()
                         else:
                             st.warning(f"  ✗ {file_result.get('filename')}: {file_result.get('msg', 'Error')}")
                 elif "error" in result:
@@ -196,6 +257,31 @@ with st.sidebar:
                     st.error("Unknown error occurred")
         else:
             st.warning("Please select files to upload")
+    
+    # Display stored upload results even after slider changes
+    if st.session_state.last_upload_result and not uploaded_files:
+        result = st.session_state.last_upload_result
+        st.divider()
+        st.info("📋 **Last Upload Summary**")
+        st.write(f"**Total chunks:** {result.get('total_chunks', 0)}")
+        
+        for file_result in result.get("results", []):
+            if file_result.get("status") == "ok":
+                st.markdown(f"#### ✓ {file_result.get('filename')}")
+                
+                patterns = file_result.get("patterns") or []
+                chunking = file_result.get("chunking") or {}
+                
+                if patterns:
+                    pattern_str = " | ".join(p.capitalize() for p in patterns)
+                    st.info(f"📊 **Detected Data Patterns**: {pattern_str}")
+                
+                st.markdown(f"**Chunks Created**: {file_result.get('chunks', 0)}")
+                
+                if chunking:
+                    st.markdown("**Chunking Strategies Applied:**")
+                    for p_type, desc in chunking.items():
+                        st.markdown(f"- **{p_type.capitalize()}**: {desc}")
     
     st.divider()
     
@@ -232,12 +318,27 @@ with st.sidebar:
         help="Number of document chunks to use as context"
     )
 
+    st.divider()
+
+    # Quiz controls
+    st.header("📝 Quiz")
+    num_questions = st.slider(
+        "Number of quiz questions",
+        min_value=1,
+        max_value=10,
+        value=5,
+        help="How many quiz questions to generate from the documents",
+    )
+    if st.button("Generate Quiz", use_container_width=True):
+        with st.spinner("Generating quiz..."):
+            quiz_result = generate_quiz(num_questions)
+            if "error" in quiz_result:
+                st.error(quiz_result["error"])
+            else:
+                st.session_state.quiz = quiz_result.get("questions", [])
+
 # Chat Interface
 st.header("💭 Ask a Question")
-
-# Initialize session state
-if "history" not in st.session_state:
-    st.session_state.history = []
 
 # Display chat history
 if st.session_state.history:
@@ -290,6 +391,15 @@ if question:
         "text": answer,
         "sources": sources
     })
+
+# Quiz display (if any)
+if "quiz" in st.session_state and st.session_state.quiz:
+    st.header("📝 Generated Quiz")
+    quiz_questions = st.session_state.quiz
+
+    st.subheader("Question List")
+    for idx, q in enumerate(quiz_questions):
+        st.markdown(f"{idx + 1}. {q.get('question', '')}")
 
 # Footer
 st.divider()

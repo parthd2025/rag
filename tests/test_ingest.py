@@ -78,8 +78,9 @@ def test_extract_text_file(ingestor, temp_dir):
 def test_process_uploaded_file(ingestor):
     """Test processing uploaded file."""
     content = b"This is test content for uploaded file."
-    chunks, doc_name = ingestor.process_uploaded_file(content, "test.txt")
+    chunks, doc_name, stats = ingestor.process_uploaded_file(content, "test.txt")
     
     assert len(chunks) > 0
     assert doc_name is not None
+    assert isinstance(stats, dict)
 

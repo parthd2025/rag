@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = Field("groq", env="LLM_PROVIDER")  # groq or gemini
     
     # RAG Configuration
-    TOP_K: int = Field(5, env="TOP_K")
+    TOP_K: int = Field(8, env="TOP_K")
     TEMPERATURE: float = Field(0.7, env="TEMPERATURE")
     MAX_TOKENS: int = Field(512, env="MAX_TOKENS")
     
@@ -43,9 +43,16 @@ class Settings(BaseSettings):
     # File Upload Configuration
     MAX_FILE_SIZE: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB default
     ALLOWED_EXTENSIONS: Set[str] = Field(
-        default_factory=lambda: {".pdf", ".docx", ".txt", ".md"},
+        default_factory=lambda: {
+            ".pdf", ".docx", ".txt", ".md",
+            ".csv", ".xlsx", ".xls",
+            ".pptx",
+            ".html", ".htm", ".xml",
+            ".png", ".jpg", ".jpeg"
+        },
         env="ALLOWED_EXTENSIONS",
     )
+    ENABLE_OCR: bool = Field(False, env="ENABLE_OCR")
     
     # Vector Store Configuration
     INDEX_PATH: str = Field("data/embeddings/faiss.index", env="INDEX_PATH")
@@ -60,7 +67,7 @@ class Settings(BaseSettings):
     
     # Logging Configuration
     LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
-    LOG_FILE: str = Field("rag_system.log", env="LOG_FILE")
+    LOG_FILE: str = Field("logs/rag_system.log", env="LOG_FILE")
     LOG_MAX_BYTES: int = Field(10 * 1024 * 1024, env="LOG_MAX_BYTES")  # 10MB
     LOG_BACKUP_COUNT: int = Field(5, env="LOG_BACKUP_COUNT")
     

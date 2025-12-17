@@ -44,7 +44,9 @@ def setup_logger(name: str = "rag_system", log_file: Optional[str] = None) -> lo
         log_file = settings.LOG_FILE
     
     log_path = Path(log_file)
+    # Ensure logs directory exists
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Logging to: {log_path.absolute()}")
     
     file_handler = RotatingFileHandler(
         log_file,

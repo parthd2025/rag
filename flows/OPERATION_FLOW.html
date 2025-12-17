@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG System Operation Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .flow-section {
+            margin-bottom: 40px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            background: #f9f9f9;
+            transition: all 0.3s ease;
+        }
+        
+        .flow-section:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+        
+        .flow-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .flow-header h2 {
+            font-size: 1.5em;
+            margin: 0;
+        }
+        
+        .flow-header .toggle {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+        
+        .flow-header.active .toggle {
+            transform: rotate(180deg);
+        }
+        
+        .flow-content {
+            display: none;
+            padding: 20px 0;
+        }
+        
+        .flow-content.active {
+            display: block;
+        }
+        
+        .flow-step {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .flow-step:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        
+        .step-file {
+            color: #764ba2;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin: 5px 0;
+        }
+        
+        .step-function {
+            color: #333;
+            font-family: 'Courier New', monospace;
+            background: #f0f0f0;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        
+        .step-description {
+            color: #666;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+        
+        .flow-diagram {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        .diagram-line {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        
+        .diagram-box {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin: 5px;
+            font-weight: bold;
+            min-width: 150px;
+            text-align: center;
+        }
+        
+        .diagram-arrow {
+            color: #667eea;
+            font-size: 1.5em;
+            margin: 0 10px;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 20px;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .highlight {
+            background: yellow;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        
+        .file-list {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .file-list h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .file-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .legend-color.file {
+            background: #764ba2;
+        }
+        
+        .legend-color.function {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 RAG System Operation Flow</h1>
+        <p class="subtitle">Complete File and Function Mapping with Interactive Flow Visualization</p>
+        
+        <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search flows, files, or functions...">
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color file"></div>
+                <span>File Name</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color function"></div>
+                <span>Function Name</span>
+            </div>
+        </div>
+        
+        <!-- Flow 1: System Initialization -->
+        <div class="flow-section" data-flow="initialization">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>1. System Initialization Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">main.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">init_components()</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 1</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">DocumentIngestor.__init__()</div>
+                    <div class="step-description">Initialize document ingestor with chunk_size, chunk_overlap, and enable_ocr settings</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">FAISSVectorStore.__init__()</div>
+                    <div class="step-description">Initialize vector store, load embedding model, load or create FAISS index</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.1</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">FAISSVectorStore._load_or_create_index()</div>
+                    <div class="step-description">Load existing index or create new one, load metadata</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 3</span>
+                    <div class="step-file">backend/llm_loader.py</div>
+                    <div class="step-function">get_llm_engine()</div>
+                    <div class="step-description">Get LLM engine instance (Groq)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 3.1</span>
+                    <div class="step-file">backend/llm_loader.py</div>
+                    <div class="step-function">GroqLLMEngine.__init__()</div>
+                    <div class="step-description">Initialize Groq LLM client</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 3.2</span>
+                    <div class="step-file">backend/llm_loader.py</div>
+                    <div class="step-function">GroqLLMEngine._load_model()</div>
+                    <div class="step-description">Load Groq API client with API key</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 4</span>
+                    <div class="step-file">backend/rag_engine.py</div>
+                    <div class="step-function">RAGEngine.__init__()</div>
+                    <div class="step-description">Initialize RAG engine with vector store and LLM engine</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 2: Document Upload -->
+        <div class="flow-section" data-flow="upload">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>2. Document Upload Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">main.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">upload()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">ingest.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">vectorstore.py</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 1</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">upload()</div>
+                    <div class="step-description">Validate vector store is initialized</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 2</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">upload()</div>
+                    <div class="step-description">Validate files list is not empty</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 3</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">upload() [LOOP]</div>
+                    <div class="step-description">Loop through each uploaded file</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 3.{idx}.1</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">upload()</div>
+                    <div class="step-description">Validate file extension against allowed_extensions</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 3.{idx}.2</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">upload()</div>
+                    <div class="step-description">Read file content and validate file size (MAX_FILE_SIZE)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 3.{idx}.3</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">DocumentIngestor.process_uploaded_file()</div>
+                    <div class="step-description">Process uploaded file from bytes (see Document Processing Flow)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 3.{idx}.4</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">FAISSVectorStore.add_chunks()</div>
+                    <div class="step-description">Add processed chunks to vector store (see Add Chunks Flow)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">UPLOAD STEP 4</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">upload()</div>
+                    <div class="step-description">Finalize and return results with total_chunks count</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 3: Document Processing -->
+        <div class="flow-section" data-flow="processing">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>3. Document Processing Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">ingest.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">load_and_process_documents()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">_extract_text()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">_chunk_text()</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 1</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">load_and_process_documents()</div>
+                    <div class="step-description">Validate file_paths list is not empty</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">load_and_process_documents() [LOOP]</div>
+                    <div class="step-description">Loop through each file path</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.1</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">load_and_process_documents()</div>
+                    <div class="step-description">Check file existence using os.path.exists()</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_text()</div>
+                    <div class="step-description">Route to appropriate extractor based on file extension</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.1</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_pdf()</div>
+                    <div class="step-description">Extract text from PDF using PyPDF2</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.2</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_docx()</div>
+                    <div class="step-description">Extract text from DOCX using python-docx (paragraphs + tables)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.3</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_text_file()</div>
+                    <div class="step-description">Extract text from TXT/MD files with encoding fallback</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.4</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_csv()</div>
+                    <div class="step-description">Extract text from CSV using pandas, convert to markdown table</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.5</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_excel()</div>
+                    <div class="step-description">Extract text from Excel (.xlsx) using openpyxl, handle multiple sheets</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.6</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_excel_legacy()</div>
+                    <div class="step-description">Extract text from legacy Excel (.xls) using xlrd</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.7</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_pptx()</div>
+                    <div class="step-description">Extract text from PowerPoint using python-pptx</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.8</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_html()</div>
+                    <div class="step-description">Extract text from HTML using BeautifulSoup</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.9</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_xml()</div>
+                    <div class="step-description">Extract text from XML using BeautifulSoup</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 2.{idx}.2.10</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_extract_image()</div>
+                    <div class="step-description">Extract text from images using pytesseract OCR (if enabled)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 3</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">load_and_process_documents()</div>
+                    <div class="step-description">Validate extracted text is not empty</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 4</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_chunk_text()</div>
+                    <div class="step-description">Chunk text into overlapping segments with sentence boundary awareness</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 4.1-4.4</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">_chunk_text() [LOOP]</div>
+                    <div class="step-description">Loop: Create chunks with sentence/word boundary detection, handle overlap</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">STEP 5</span>
+                    <div class="step-file">backend/ingest.py</div>
+                    <div class="step-function">load_and_process_documents()</div>
+                    <div class="step-description">Prepare and return (chunks, document_name) tuple</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 4: Add Chunks -->
+        <div class="flow-section" data-flow="add-chunks">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>4. Add Chunks to Vector Store Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">vectorstore.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">add_chunks()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">_save_index()</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">ADD_CHUNKS STEP 1</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">add_chunks()</div>
+                    <div class="step-description">Validate chunks list is not empty</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">ADD_CHUNKS STEP 2</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">add_chunks()</div>
+                    <div class="step-description">Generate embeddings using embedding_model.encode() with batch_size=32</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">ADD_CHUNKS STEP 3</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">add_chunks()</div>
+                    <div class="step-description">Validate embeddings shape matches embedding_dimension</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">ADD_CHUNKS STEP 4</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">add_chunks()</div>
+                    <div class="step-description">Add embeddings to FAISS index using index.add(), extend chunks list</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">ADD_CHUNKS STEP 5</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">_save_index()</div>
+                    <div class="step-description">Save FAISS index and metadata (chunks) to disk</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 5: Chat/Query -->
+        <div class="flow-section" data-flow="chat">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>5. Chat/Query Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">main.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">chat()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">rag_engine.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">vectorstore.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">llm_loader.py</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CHAT STEP 1</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">chat()</div>
+                    <div class="step-description">Validate RAG engine is initialized</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CHAT STEP 2</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">chat()</div>
+                    <div class="step-description">Validate LLM engine is ready (is_ready())</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CHAT STEP 3</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">chat()</div>
+                    <div class="step-description">Validate vector store has chunks (len(chunks) > 0)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CHAT STEP 4</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">chat()</div>
+                    <div class="step-description">Set top_k parameter using rag_engine.set_top_k()</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CHAT STEP 4.1</span>
+                    <div class="step-file">backend/rag_engine.py</div>
+                    <div class="step-function">answer_query_with_context()</div>
+                    <div class="step-description">Process query (see RAG Query Flow)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CHAT STEP 4.2</span>
+                    <div class="step-file">backend/main.py</div>
+                    <div class="step-function">chat()</div>
+                    <div class="step-description">Return QueryResponse with answer and sources</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 6: RAG Query Processing -->
+        <div class="flow-section" data-flow="rag-query">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>6. RAG Query Processing Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">rag_engine.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">answer_query_with_context()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">search()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">_build_prompt()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">generate()</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">RAG STEP 1</span>
+                    <div class="step-file">backend/rag_engine.py</div>
+                    <div class="step-function">answer_query_with_context()</div>
+                    <div class="step-description">Validate question is not empty</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">RAG STEP 2</span>
+                    <div class="step-file">backend/rag_engine.py</div>
+                    <div class="step-function">answer_query_with_context()</div>
+                    <div class="step-description">Validate LLM engine is ready</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">RAG STEP 3</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">search()</div>
+                    <div class="step-description">Search vector store for similar chunks (see Vector Store Search Flow)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">RAG STEP 4</span>
+                    <div class="step-file">backend/rag_engine.py</div>
+                    <div class="step-function">answer_query_with_context() [LOOP]</div>
+                    <div class="step-description">Build context and sources from search results, loop through results</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">RAG STEP 5</span>
+                    <div class="step-file">backend/rag_engine.py</div>
+                    <div class="step-function">_build_prompt()</div>
+                    <div class="step-description">Build RAG prompt from question and context</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">RAG STEP 6</span>
+                    <div class="step-file">backend/llm_loader.py</div>
+                    <div class="step-function">GroqLLMEngine.generate()</div>
+                    <div class="step-description">Generate answer using LLM with prompt, max_tokens, and temperature</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 7: Vector Store Search -->
+        <div class="flow-section" data-flow="search">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>7. Vector Store Search Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">vectorstore.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">search()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">index.search()</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">SEARCH STEP 1</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">search()</div>
+                    <div class="step-description">Validate chunks exist (len(chunks) > 0)</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">SEARCH STEP 2</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">search()</div>
+                    <div class="step-description">Validate query is not empty</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">SEARCH STEP 3</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">search()</div>
+                    <div class="step-description">Generate query embedding using embedding_model.encode()</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">SEARCH STEP 4</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">search()</div>
+                    <div class="step-description">Search FAISS index with query embedding using index.search()</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">SEARCH STEP 5</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">search() [LOOP]</div>
+                    <div class="step-description">Process results: loop through indices, convert L2 distances to similarities (1/(1+dist)), validate indices</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow 8: Clear Vector Store -->
+        <div class="flow-section" data-flow="clear">
+            <div class="flow-header" onclick="toggleFlow(this)">
+                <h2>8. Clear Vector Store Flow</h2>
+                <span class="toggle">▼</span>
+            </div>
+            <div class="flow-content">
+                <div class="flow-diagram">
+                    <div class="diagram-line">
+                        <div class="diagram-box">main.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">clear()</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">vectorstore.py</div>
+                        <span class="diagram-arrow">→</span>
+                        <div class="diagram-box">_save_index()</div>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CLEAR STEP 1</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">clear()</div>
+                    <div class="step-description">Reset FAISS index (create new IndexFlatL2) and clear chunks list</div>
+                </div>
+                <div class="flow-step">
+                    <span class="step-number">CLEAR STEP 2</span>
+                    <div class="step-file">backend/vectorstore.py</div>
+                    <div class="step-function">_save_index()</div>
+                    <div class="step-description">Save cleared index to disk</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- File Summary -->
+        <div class="file-list">
+            <h3>📁 Core Files Summary</h3>
+            <div class="file-item">
+                <strong>backend/main.py</strong> - FastAPI application, endpoints (upload, chat, health, clear), initialization
+            </div>
+            <div class="file-item">
+                <strong>backend/ingest.py</strong> - Document ingestion, extraction (PDF, DOCX, CSV, Excel, PPTX, HTML, XML, Images), chunking
+            </div>
+            <div class="file-item">
+                <strong>backend/vectorstore.py</strong> - FAISS vector store operations (add_chunks, search, clear, save_index)
+            </div>
+            <div class="file-item">
+                <strong>backend/rag_engine.py</strong> - RAG query processing (answer_query_with_context, _build_prompt)
+            </div>
+            <div class="file-item">
+                <strong>backend/llm_loader.py</strong> - LLM engine initialization and generation (GroqLLMEngine)
+            </div>
+            <div class="file-item">
+                <strong>backend/config.py</strong> - Configuration management (Settings class)
+            </div>
+            <div class="file-item">
+                <strong>backend/logger_config.py</strong> - Logging setup (setup_logger)
+            </div>
+            <div class="file-item">
+                <strong>logs/rag_system.log</strong> - All flow logs are written here with rotation
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Toggle flow sections
+        function toggleFlow(header) {
+            const content = header.nextElementSibling;
+            const isActive = content.classList.contains('active');
+            
+            // Close all other flows
+            document.querySelectorAll('.flow-content').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelectorAll('.flow-header').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Toggle current flow
+            if (!isActive) {
+                content.classList.add('active');
+                header.classList.add('active');
+            }
+        }
+        
+        // Search functionality
+        const searchBox = document.getElementById('searchBox');
+        searchBox.addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase().trim();
+            
+            if (searchTerm === '') {
+                // Reset all highlights
+                document.querySelectorAll('.highlight').forEach(el => {
+                    el.outerHTML = el.innerHTML;
+                });
+                return;
+            }
+            
+            // Search through all flow sections
+            document.querySelectorAll('.flow-section').forEach(section => {
+                const text = section.textContent.toLowerCase();
+                const flowName = section.getAttribute('data-flow');
+                
+                if (text.includes(searchTerm) || flowName.includes(searchTerm)) {
+                    section.style.display = 'block';
+                    highlightText(section, searchTerm);
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        });
+        
+        function highlightText(element, term) {
+            const walker = document.createTreeWalker(
+                element,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+            
+            const textNodes = [];
+            let node;
+            while (node = walker.nextNode()) {
+                if (node.textContent.toLowerCase().includes(term)) {
+                    textNodes.push(node);
+                }
+            }
+            
+            textNodes.forEach(textNode => {
+                const parent = textNode.parentNode;
+                const text = textNode.textContent;
+                const regex = new RegExp(`(${term})`, 'gi');
+                const highlighted = text.replace(regex, '<span class="highlight">$1</span>');
+                
+                if (highlighted !== text) {
+                    const wrapper = document.createElement('span');
+                    wrapper.innerHTML = highlighted;
+                    parent.replaceChild(wrapper, textNode);
+                }
+            });
+        }
+        
+        // Expand first flow by default
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstHeader = document.querySelector('.flow-header');
+            if (firstHeader) {
+                toggleFlow(firstHeader);
+            }
+        });
+    </script>
+</body>
+</html>
+

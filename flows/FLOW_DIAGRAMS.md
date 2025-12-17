@@ -599,3 +599,104 @@ Quick reference for all key functions with their file locations and line numbers
 
 *These diagrams show the complete flow of data and control through your RAG system with function names and line numbers for easy code navigation!*
 
+
+
+## Detailed Condition Flows (File / Function / Lines / Next Step)
+
+### 1. `backend/main.py::upload` (L168–L286)
+
+| File            | Function | Lines     | Condition / Step                                   | If Condition TRUE (failure)                                                              | If Condition FALSE (next step)                                     |
+|----------------|----------|-----------|----------------------------------------------------|------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
+| backend/main.py | upload  | 175–184   | `if not vector_store`                             | Log `UPLOAD STEP 1 FAILED`; raise `HTTPException(500, "Vector store not initialized")`   | Log `UPLOAD STEP 1 COMPLETE`; go to Step 2 (validate files)       |
+| backend/main.py | upload  | 186–193   | `if not files`                                    | Log `UPLOAD STEP 2 FAILED`; raise `HTTPException(400, "No files provided")`              | Log `UPLOAD STEP 2 COMPLETE`; enter loop `for idx, file in files` |
+| backend/main.py | upload  | 206–218   | `if not file_ext or file_ext not in allowed_extensions` | Log `UPLOAD STEP 3.{idx}.1 FAILED`; append `status="error"` result; increment `error_count` | Log `UPLOAD STEP 3.{idx}.1 COMPLETE`; go to size validation       |
+| backend/main.py | upload  | 225–233   | `if file_size > settings.MAX_FILE_SIZE`           | Log `UPLOAD STEP 3.{idx}.2 FAILED`; append size `error` result; increment `error_count`  | Continue to zero-size check                                        |
+| backend/main.py | upload  | 235–243   | `if file_size == 0`                               | Log `UPLOAD STEP 3.{idx}.2 FAILED`; append “File is empty”; increment `error_count`      | Log `UPLOAD STEP 3.{idx}.2 COMPLETE`; call `ingestor.process_uploaded_file` |
+| backend/main.py | upload  | 251–262   | `if chunks`                                       | Log `UPLOAD STEP 3.{idx}.4`; call `vector_store.add_chunks`; append `status="ok"` result; `success_count++` | Log path; already in success branch                               |
+| backend/main.py | upload  | 263–269   | `else` (no chunks)                                | Log `UPLOAD STEP 3.{idx} FAILED: No chunks extracted`; append `status="error"` result; `error_count++` | N/A                                                                |
+| backend/main.py | upload  | 271–273   | `except HTTPException`                            | Log `UPLOAD STEP 3.{idx} FAILED`; re-raise `HTTPException`                               | N/A                                                                |
+| backend/main.py | upload  | 274–281   | `except Exception as e`                           | Log `UPLOAD STEP 3.{idx} FAILED: Error processing file`; append `status="error"` result; `error_count++` | N/A                                                                |
+| backend/main.py | upload  | 283–286   | Finalize                                          | Log `UPLOAD ... COMPLETE` with success/error counts and total chunks; return JSON        | N/A                                                                |
+
+
+### 2. `backend/ingest.py::process_uploaded_file` (L540–L603)
+
+| File             | Function              | Lines    | Condition / Step                                      | If Condition TRUE (failure)                                                         | If Condition FALSE (next step)                          |
+|-----------------|-----------------------|----------|-------------------------------------------------------|-------------------------------------------------------------------------------------|---------------------------------------------------------|
+| backend/ingest.py | process_uploaded_file | 553–556 | `if not file_content` (STEP 1)                        | Log `STEP 1 FAILED: Empty file content provided`; return `([], "unknown")`         | Log `STEP 1 COMPLETE`; proceed to temp directory        |
+| backend/ingest.py | process_uploaded_file | 560–566 | `try: temp_path.parent.mkdir(...)` (STEP 2)           | On exception: log `STEP 2 FAILED`; return `([], filename or "unknown")`            | Log `STEP 2 COMPLETE`; proceed to write temp file       |
+| backend/ingest.py | process_uploaded_file | 569–576 | `try: open(temp_path, 'wb')` (STEP 3)                 | On exception: log `STEP 3 FAILED`; return `([], filename or "unknown")`            | Log `STEP 3 COMPLETE`; proceed to process document      |
+| backend/ingest.py | process_uploaded_file | 579–588 | `try: load_and_process_documents([temp_path])` (STEP 4) | On exception: log `STEP 4 FAILED`; return `([], filename or "unknown")`           | If `chunks`: log `STEP 4 COMPLETE`; else log `STEP 4 FAILED`; return `(chunks, doc_name)` |
+| backend/ingest.py | process_uploaded_file | 595–602 | `finally` cleanup (STEP 5)                            | If `unlink` fails: log `STEP 5 FAILED` warning; no change to returned result        | On success: log `STEP 5 COMPLETE` or debug              |
+
+
+### 3. `backend/ingest.py::load_and_process_documents` (L37–L113)
+
+| File             | Function                    | Lines  | Condition / Step                                 | If Condition TRUE (failure)                                                | If Condition FALSE (next step)                           |
+|-----------------|-----------------------------|--------|--------------------------------------------------|----------------------------------------------------------------------------|----------------------------------------------------------|
+| backend/ingest.py | load_and_process_documents | 49–52  | `if not file_paths` (STEP 1)                     | Log `STEP 1 FAILED: No file paths provided`; return `([], "unknown")`      | Log `STEP 1 COMPLETE`; proceed to loop over file_paths   |
+| backend/ingest.py | load_and_process_documents | 61–68  | `if not os.path.exists(file_path)` (STEP 2.{idx}) | Log `STEP 2.{idx} FAILED: File not found`; `failed_count++`; `continue`   | Log `STEP 2.{idx}.1 COMPLETE`; proceed to `_extract_text` |
+| backend/ingest.py | load_and_process_documents | 72–84  | `try: text = self._extract_text(...)` (STEP 2.{idx}.2) | On exception: log `STEP 2.{idx} FAILED`; `failed_count++`; `continue`    | If `text.strip()`: append text + name; else log `FAILED` and `failed_count++` |
+| backend/ingest.py | load_and_process_documents | 92–95  | `if not all_text.strip()` (STEP 3)               | Log `STEP 3 FAILED: No text extracted from any files`; return `([], "unknown")` | Log `STEP 3 COMPLETE`; proceed to chunking               |
+| backend/ingest.py | load_and_process_documents | 98–107 | `try: chunks = self._chunk_text(all_text)` (STEP 4) | If `not chunks`: log `STEP 4 FAILED`; return `([], "unknown")`; on exception: log and return `([], "unknown")` | Log `STEP 4 COMPLETE`; continue                          |
+| backend/ingest.py | load_and_process_documents | 110–113| STEP 5 result composition                        | Log flow COMPLETE; return `(chunks, doc_name)`                               | N/A                                                      |
+
+
+### 4. `backend/rag_engine.py::answer_query_with_context` (L81–202)
+
+| File               | Function                   | Lines   | Condition / Step                                     | If Condition TRUE (failure)                                                              | If Condition FALSE (next step)                       |
+|-------------------|----------------------------|---------|------------------------------------------------------|------------------------------------------------------------------------------------------|------------------------------------------------------|
+| backend/rag_engine.py | answer_query_with_context | 93–100 | `if not question or not question.strip()` (RAG STEP 1) | Log `RAG STEP 1 FAILED: Empty question provided`; return `"Please provide a valid question."` | Log `RAG STEP 1 COMPLETE`; proceed to LLM validation |
+| backend/rag_engine.py | answer_query_with_context | 104–110| `if not self.llm_engine.is_ready()` (STEP 2)         | Log `RAG STEP 2 FAILED: LLM engine not ready`; return `"Error: LLM service not available..."` | Log `RAG STEP 2 COMPLETE`; proceed to search         |
+| backend/rag_engine.py | answer_query_with_context | 114–126| `results = self.vector_store.search(...)` (STEP 3)   | On exception: log `RAG STEP 3 FAILED`; return `"Error searching documents: ..."`        | If `not results`: log `RAG STEP 3 FAILED`; return `"No documents found..."`; else continue |
+| backend/rag_engine.py | answer_query_with_context | 135–151| Build context/sources (STEP 4)                      | On exception: log `RAG STEP 4 FAILED`; return `"Error building context: ..."`           | Log `RAG STEP 4 COMPLETE`; proceed to build prompt   |
+| backend/rag_engine.py | answer_query_with_context | 160–170| Build prompt (STEP 5)                               | On exception: log `RAG STEP 5 FAILED`; return `"Error building prompt: ..."` plus context/sources | Log `RAG STEP 5 COMPLETE`; proceed to generate       |
+| backend/rag_engine.py | answer_query_with_context | 173–195| Generate answer (STEP 6)                            | On exception: log `RAG STEP 6 FAILED`; return `"Error processing query: ..."`           | If `answer`: log COMPLETE and return; else return `"Error: Empty response from LLM."` |
+
+
+### 5. `backend/vectorstore.py::search` (L165–225)
+
+| File                | Function | Lines   | Condition / Step                              | If Condition TRUE (failure)                                        | If Condition FALSE (next step)                         |
+|--------------------|----------|---------|-----------------------------------------------|--------------------------------------------------------------------|--------------------------------------------------------|
+| backend/vectorstore.py | search | 179–182 | `if not self.chunks` (SEARCH STEP 1)          | Log `SEARCH STEP 1 FAILED: No chunks available`; return `[]`       | Log `SEARCH STEP 1 COMPLETE`; proceed to query validation      |
+| backend/vectorstore.py | search | 185–187 | `if not query or not query.strip()` (STEP 2)  | Log `SEARCH STEP 2 FAILED: Empty query provided`; return `[]`     | Log `SEARCH STEP 2 COMPLETE`; proceed to embedding              |
+| backend/vectorstore.py | search | 190–197 | Generate query embedding (STEP 3)             | On exception (caught as `SEARCH FAILED`): return `[]`             | Log `SEARCH STEP 3 COMPLETE`; proceed to index.search          |
+| backend/vectorstore.py | search | 199–203 | `self.index.search(query_emb, k)` (STEP 4)    | On exception: log `SEARCH FAILED: Error during search`; return `[]` | Log `SEARCH STEP 4 COMPLETE`; proceed to processing results     |
+| backend/vectorstore.py | search | 205–221 | Process `indices`/`distances` (STEP 5)        | Invalid indices: log warnings and skip those entries; only outer exception returns `[]` | On success: log `SEARCH COMPLETE` and return results   |
+
+
+### 6. `backend/vectorstore.py::add_chunks` (L113–163)
+
+| File                | Function   | Lines   | Condition / Step                                | If Condition TRUE (failure)                                            | If Condition FALSE (next step)                         |
+|--------------------|------------|---------|-------------------------------------------------|------------------------------------------------------------------------|--------------------------------------------------------|
+| backend/vectorstore.py | add_chunks | 123–126 | `if not chunks` (ADD_CHUNKS STEP 1)            | Log `ADD_CHUNKS STEP 1 FAILED: No chunks provided`; `return`           | Log `ADD_CHUNKS STEP 1 COMPLETE`; proceed to embeddings             |
+| backend/vectorstore.py | add_chunks | 129–139 | Generate embeddings (STEP 2)                   | On exception: outer `except` logs `ADD_CHUNKS FAILED` and **raises**   | Log `ADD_CHUNKS STEP 2 COMPLETE`; proceed to shape validation       |
+| backend/vectorstore.py | add_chunks | 141–147 | `if embeddings.shape[1] != self.embedding_dim` (STEP 3) | Log `ADD_CHUNKS STEP 3 FAILED: Dimension mismatch`; raise `ValueError` | Log `ADD_CHUNKS STEP 3 COMPLETE`; proceed to adding to index        |
+| backend/vectorstore.py | add_chunks | 150–154 | Add to FAISS index (STEP 4)                    | On exception: outer `except` logs and **raises**                       | Log `ADD_CHUNKS STEP 4 COMPLETE`; proceed to save index             |
+| backend/vectorstore.py | add_chunks | 156–160 | `_save_index()` (STEP 5)                       | On exception: outer `except` logs and **raises**                       | Log `ADD_CHUNKS STEP 5 COMPLETE` and flow COMPLETE                  |
+
+
+### 7. `backend/main.py::init_components` (L66–113)
+
+| File            | Function        | Lines   | Condition / Step                                             | If Condition TRUE (failure)                                                          | If Condition FALSE (next step)                                   |
+|----------------|-----------------|---------|--------------------------------------------------------------|--------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| backend/main.py | init_components | 70–72  | Start init: log `"=== Starting RAG system initialization flow ==="` | N/A                                                                          | Proceed to STEP 1                                               |
+| backend/main.py | init_components | 73–80  | STEP 1 – create `DocumentIngestor(...)`                      | If `DocumentIngestor.__init__` raises: caught by outer `except`, log `INIT FAILED` and **re-raise** | Log `INIT STEP 1 COMPLETE`; proceed to STEP 2                    |
+| backend/main.py | init_components | 82–89  | STEP 2 – create `FAISSVectorStore(...)`                      | If `FAISSVectorStore.__init__` raises: caught, log `INIT FAILED`, **re-raise**      | Log `INIT STEP 2 COMPLETE` (chunks count); proceed to STEP 3     |
+| backend/main.py | init_components | 91–97  | STEP 3 – `llm_engine = get_llm_engine(...)` + `is_ready()`   | If `get_llm_engine` raises: caught, log `INIT FAILED`, **re-raise**; if LLM not ready: log `INIT STEP 3 FAILED` but continue | If ready: log `INIT STEP 3 COMPLETE`; then go to STEP 4          |
+| backend/main.py | init_components | 99–107 | STEP 4 – create `RAGEngine(...)`                             | If `RAGEngine.__init__` raises: caught, log `INIT FAILED`, **re-raise**            | Log `INIT STEP 4 COMPLETE`; log `INIT flow COMPLETE`            |
+| backend/main.py | init_components | 111–113| Outer `except Exception as e`                                | Any failure in any step: log `INIT FAILED: Failed to initialize components: {e}`; **re-raise** | N/A                                                              |
+
+
+### 8. `backend/main.py::chat` (L289–345)
+
+| File            | Function | Lines   | Condition / Step                                                       | If Condition TRUE (failure)                                                                 | If Condition FALSE (next step)                                |
+|----------------|----------|---------|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|---------------------------------------------------------------|
+| backend/main.py | chat     | 292–293| Start: log `"=== Starting chat endpoint flow for query: ... ==="`     | N/A                                                                                         | Proceed to STEP 1                                             |
+| backend/main.py | chat     | 295–300| STEP 1 – `if not rag_engine`                                          | Log `CHAT STEP 1 FAILED: RAG engine not initialized`; raise `HTTPException(500)`           | Log `CHAT STEP 1 COMPLETE`; proceed to STEP 2                 |
+| backend/main.py | chat     | 304–309| STEP 2 – `if not llm_engine or not llm_engine.is_ready()`             | Log `CHAT STEP 2 FAILED: LLM not ready`; raise `HTTPException(503)`                        | Log `CHAT STEP 2 COMPLETE`; proceed to STEP 3                 |
+| backend/main.py | chat     | 313–318| STEP 3 – `if not vector_store or not vector_store.chunks`             | Log `CHAT STEP 3 FAILED: No documents loaded`; raise `HTTPException(400)`                  | Log `CHAT STEP 3 COMPLETE` (chunks count); proceed to STEP 4  |
+| backend/main.py | chat     | 323–325| STEP 4 – set top_k and call `rag_engine.answer_query_with_context()`  | If `set_top_k` or RAG call raises: handled by `except` blocks below                        | On success, `result` dict is available; proceed to answer check |
+| backend/main.py | chat     | 327–336| STEP 4 answer check – `if result.get("answer")` else error            | If falsy: log `CHAT STEP 4 FAILED: Empty answer returned`; raise `HTTPException(500)`      | Log `CHAT STEP 4 COMPLETE` and `Chat flow COMPLETE`; return `QueryResponse` |
+| backend/main.py | chat     | 337–339| `except HTTPException`                                                | Log `CHAT STEP 4 FAILED: HTTPException raised`; re-raise same `HTTPException`              | N/A                                                           |
+| backend/main.py | chat     | 340–345| `except Exception as e`                                               | Log `CHAT STEP 4 FAILED: Error processing query: {e}`; raise `HTTPException(500)`          | N/A                                                           |
