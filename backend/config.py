@@ -3,7 +3,7 @@ Unified configuration management for RAG system.
 """
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Set
 from pydantic import Field, validator
 
 # Support both Pydantic v1 and v2
@@ -42,14 +42,20 @@ class Settings(BaseSettings):
     
     # File Upload Configuration
     MAX_FILE_SIZE: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB default
-    ALLOWED_EXTENSIONS: str = Field(".pdf,.docx,.txt,.md", env="ALLOWED_EXTENSIONS")
+    ALLOWED_EXTENSIONS: Set[str] = Field(
+        default_factory=lambda: {".pdf", ".docx", ".txt", ".md"},
+        env="ALLOWED_EXTENSIONS",
+    )
     
     # Vector Store Configuration
     INDEX_PATH: str = Field("data/embeddings/faiss.index", env="INDEX_PATH")
     METADATA_PATH: str = Field("data/embeddings/metadata.json", env="METADATA_PATH")
     
     # CORS Configuration
-    CORS_ORIGINS: str = Field("http://localhost:8501,http://127.0.0.1:8501", env="CORS_ORIGINS")
+    CORS_ORIGINS: List[str] = Field(
+        default_factory=lambda: ["http://localhost:8501", "http://127.0.0.1:8501"],
+        env="CORS_ORIGINS",
+    )
     PRODUCTION: bool = Field(False, env="PRODUCTION")
     
     # Logging Configuration
@@ -60,31 +66,31 @@ class Settings(BaseSettings):
     
     @validator("ALLOWED_EXTENSIONS", pre=True)
     def parse_extensions(cls, v):
-        """Parse comma-separated extensions into set."""
+        """Parse ALLOWED_EXTENSIONS from env into a set."""
         if isinstance(v, str):
-            return set(ext.strip() for ext in v.split(",") if ext.strip())
+            return {ext.strip() for ext in v.split(",") if ext.strip()}
+        if isinstance(v, (list, set, tuple)):
+            return {str(ext).strip() for ext in v if str(ext).strip()}
         return v
     
     @validator("CORS_ORIGINS", pre=True)
     def parse_cors_origins(cls, v):
-        """Parse comma-separated CORS origins into list."""
+        """Parse CORS_ORIGINS from env into a list."""
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        if isinstance(v, (list, set, tuple)):
+            return [str(origin).strip() for origin in v if str(origin).strip()]
         return v
     
     @property
-    def allowed_extensions_set(self) -> set:
+    def allowed_extensions_set(self) -> Set[str]:
         """Get allowed extensions as a set."""
-        if isinstance(self.ALLOWED_EXTENSIONS, set):
-            return self.ALLOWED_EXTENSIONS
-        return set(ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip())
+        return self.ALLOWED_EXTENSIONS
     
     @property
-    def cors_origins_list(self) -> list:
+    def cors_origins_list(self) -> List[str]:
         """Get CORS origins as a list."""
-        if isinstance(self.CORS_ORIGINS, list):
-            return self.CORS_ORIGINS
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        return self.CORS_ORIGINS
     
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
