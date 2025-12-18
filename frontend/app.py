@@ -129,9 +129,9 @@ def query_rag(question: str, top_k: int = 5) -> Dict[str, Any]:
         return {"answer": f"Unexpected error: {str(e)}", "sources": []}
 
 
-def generate_quiz(num_questions: int = 5) -> Dict[str, Any]:
+def generate_suggested_questions(num_questions: int = 5) -> Dict[str, Any]:
     """
-    Call the backend to generate a quiz.
+    Call the backend to generate suggested questions.
 
     Args:
         num_questions: Number of questions to request
@@ -148,7 +148,7 @@ def generate_quiz(num_questions: int = 5) -> Dict[str, Any]:
         response.raise_for_status()
         return response.json()
     except requests.exceptions.Timeout:
-        return {"error": "Quiz generation timeout."}
+        return {"error": "Suggested questions generation timeout."}
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 400:
             return {"error": "No documents loaded. Please upload documents first."}
@@ -188,8 +188,8 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "last_upload_result" not in st.session_state:
     st.session_state.last_upload_result = None
-if "quiz" not in st.session_state:
-    st.session_state.quiz = []
+if "suggested_questions" not in st.session_state:
+    st.session_state.suggested_questions = []
 
 # UI
 st.title("💬 RAG Chatbot")
@@ -295,10 +295,14 @@ with st.sidebar:
     else:
         st.info("Chunks: 0 (Backend not connected)")
     
-    # Clear button
+    # Clear documents button
     if st.button("🗑️ Clear All Documents", use_container_width=True):
         if api_status:
             if clear_documents():
+                # Clear session state
+                st.session_state.suggested_questions = []
+                st.session_state.history = []
+                st.session_state.last_upload_result = None
                 st.success("✅ Documents cleared")
                 st.rerun()
             else:
@@ -320,25 +324,58 @@ with st.sidebar:
 
     st.divider()
 
-    # Quiz controls
-    st.header("📝 Quiz")
+    # Suggested Questions controls
+    st.header("💡 Suggested Questions")
     num_questions = st.slider(
-        "Number of quiz questions",
+        "Number of suggested questions",
         min_value=1,
         max_value=10,
         value=5,
-        help="How many quiz questions to generate from the documents",
+        help="How many suggested questions to generate from the documents",
     )
-    if st.button("Generate Quiz", use_container_width=True):
-        with st.spinner("Generating quiz..."):
-            quiz_result = generate_quiz(num_questions)
-            if "error" in quiz_result:
-                st.error(quiz_result["error"])
+    if st.button("Generate Suggested Questions", use_container_width=True):
+        with st.spinner("Generating suggested questions..."):
+            questions_result = generate_suggested_questions(num_questions)
+            if "error" in questions_result:
+                st.error(questions_result["error"])
             else:
-                st.session_state.quiz = quiz_result.get("questions", [])
+                st.session_state.suggested_questions = questions_result.get("questions", [])
+                st.rerun()
+
+# Suggested Questions display at the top (if any)
+if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
+    st.markdown("---")
+    st.markdown("## 💡 Suggested Questions")
+    
+    quiz_questions = st.session_state.suggested_questions
+    
+    # Display suggested questions with icons
+    comparative_count = 0
+    
+    for idx, q in enumerate(quiz_questions, 1):
+        if isinstance(q, dict):
+            question_text = q.get('question', '')
+            q_type = q.get('type', 'comparative')
+        else:
+            question_text = str(q)
+            q_type = 'comparative'
+        
+        # Use icon based on question type
+        if q_type == 'comparative':
+            st.markdown(f"🔀 **Q{idx}.** {question_text}")
+            comparative_count += 1
+        else:
+            st.markdown(f"🎯 **Q{idx}.** {question_text}")
 
 # Chat Interface
-st.header("💭 Ask a Question")
+col_title, col_clear = st.columns([0.85, 0.15])
+with col_title:
+    st.header("💭 Ask a Question")
+with col_clear:
+    if st.button("🗑️", use_container_width=True, help="Clear chat history", key="clear_chat"):
+        st.session_state.history = []
+        st.success("✅ Chat cleared")
+        st.rerun()
 
 # Display chat history
 if st.session_state.history:
@@ -391,15 +428,6 @@ if question:
         "text": answer,
         "sources": sources
     })
-
-# Quiz display (if any)
-if "quiz" in st.session_state and st.session_state.quiz:
-    st.header("📝 Generated Quiz")
-    quiz_questions = st.session_state.quiz
-
-    st.subheader("Question List")
-    for idx, q in enumerate(quiz_questions):
-        st.markdown(f"{idx + 1}. {q.get('question', '')}")
 
 # Footer
 st.divider()

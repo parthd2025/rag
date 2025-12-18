@@ -1,6 +1,6 @@
 """
-Quiz generation utilities for building questionnaires from existing chunks.
-Uses the existing LLM engine via a simple helper function.
+Suggested questions generation utilities for RAG chatbot.
+Implements hybrid approach: comparative questions + document-specific questions.
 """
 
 from typing import List, Dict, Any
@@ -8,54 +8,211 @@ from typing import List, Dict, Any
 from logger_config import logger
 
 
-def build_quiz_prompt(context_chunks: List[str], num_questions: int = 5) -> str:
+def build_comparative_questions_prompt(context_chunks: List[str], num_documents: int = 2) -> str:
     """
-    Build a prompt instructing the LLM to create a quiz from the given context.
+    Build a prompt for generating comparative questions across multiple documents.
 
     Args:
-        context_chunks: List of text chunks to use as source material
+        context_chunks: List of text chunks from multiple documents
+        num_documents: Number of documents being analyzed
+
+    Returns:
+        Prompt string
+    """
+    joined_context = "\n\n".join(context_chunks[:20])
+
+    prompt = f"""You are an expert at creating insightful comparative questions for multi-document analysis.
+
+Your task: Create 3-4 comparative questions that help users understand relationships and differences across the {num_documents} provided documents.
+
+Context from documents:
+{joined_context}
+
+Instructions:
+1. Create questions that require cross-document analysis
+2. Questions should highlight key differences, similarities, or complementary information
+3. Questions should be clear and valuable for understanding the full picture
+4. Each question should be direct and answerable from the provided content
+5. Focus on: contradictions, complementary info, common themes, key differences
+
+Return ONLY valid JSON (no additional text):
+{{
+  "comparative_questions": [
+    "Question that compares across documents?",
+    "What are the key differences between...?",
+    "How do these documents complement each other?"
+  ]
+}}
+
+Requirements:
+- Provide 3-4 questions only
+- Questions should be open-ended (no multiple choice options)
+- Ensure valid JSON format
+"""
+    return prompt
+
+
+def build_document_specific_prompt(chunks: List[str], document_name: str, num_questions: int = 2) -> str:
+    """
+    Build a prompt for generating questions specific to one document.
+
+    Args:
+        chunks: Chunks from a specific document
+        document_name: Name of the document
         num_questions: Number of questions to generate
 
     Returns:
         Prompt string
     """
-    joined_context = "\n\n".join(context_chunks[:15])  # Increased to 15 for more context
+    joined_context = "\n\n".join(chunks[:10])
 
-    prompt = f"""You are an educational content creator designing a multiple-choice quiz based on provided document content.
+    prompt = f"""You are an expert at creating focused questions about document content.
 
-Your task: Create {num_questions} engaging and varied multiple-choice questions that test understanding of the material.
+Your task: Create {num_questions} key questions that help users understand the main points in this document: {document_name}
 
-Context from documents:
+Document content:
 {joined_context}
 
-Instructions for question creation:
-1. Create questions that test key concepts, facts, and understanding from the provided content
-2. Questions should be clear and unambiguous
-3. Each question must have 4 distinct options (A, B, C, D)
-4. Ensure one option is clearly the correct answer
-5. The correct answer should always be directly supported by the context
-6. Create plausible but incorrect alternatives (distractors)
-7. Include questions that cover different parts of the provided content
+Instructions:
+1. Create questions that highlight main topics and key information
+2. Questions should be direct and answerable from the document
+3. Focus on actionable, valuable information
+4. Questions should be open-ended (no multiple choice)
+5. Avoid generic questions - be specific to this document
 
-Return ONLY valid JSON (no additional text) with this exact structure:
+Return ONLY valid JSON (no additional text):
 {{
   "questions": [
-    {{
-      "question": "What is the main topic?",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_index": 0,
-      "explanation": "Brief explanation of why this is correct based on the context."
-    }}
+    "Key question about this document?",
+    "Another important question?"
   ]
 }}
 
 Requirements:
-- Each question MUST be answerable from the provided context
 - Provide exactly {num_questions} questions
 - Ensure valid JSON format
-- Do NOT include any text before or after the JSON
 """
     return prompt
+
+
+def generate_comparative_questions(
+    llm_engine,
+    chunks: List[str],
+    num_documents: int = 2,
+) -> List[str]:
+    """
+    Generate comparative questions across multiple documents.
+
+    Args:
+        llm_engine: LLM engine instance
+        chunks: Chunks from all documents
+        num_documents: Number of documents
+
+    Returns:
+        List of comparative question strings
+    """
+    import json
+
+    if not chunks:
+        return []
+
+    prompt = build_comparative_questions_prompt(chunks, num_documents)
+
+    try:
+        logger.info(f"QUESTIONS: Generating comparative questions from {num_documents} documents")
+        raw = llm_engine.generate(prompt, max_tokens=2000, temperature=0.7)
+
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1:
+            raw_json = raw[start : end + 1]
+        else:
+            raw_json = raw
+
+        data = json.loads(raw_json)
+        questions = data.get("comparative_questions", [])
+        return [q.strip() for q in questions if q.strip()]
+    except Exception as e:
+        logger.error(f"QUESTIONS: Failed to generate comparative questions: {e}")
+        return []
+
+
+def generate_document_specific_questions(
+    llm_engine,
+    chunks: List[str],
+    document_name: str,
+    num_questions: int = 2,
+) -> List[str]:
+    """
+    Generate questions specific to one document.
+
+    Args:
+        llm_engine: LLM engine instance
+        chunks: Chunks from the document
+        document_name: Name of the document
+        num_questions: Number of questions to generate
+
+    Returns:
+        List of question strings
+    """
+    import json
+
+    if not chunks:
+        return []
+
+    prompt = build_document_specific_prompt(chunks, document_name, num_questions)
+
+    try:
+        logger.info(f"QUESTIONS: Generating {num_questions} questions for {document_name}")
+        raw = llm_engine.generate(prompt, max_tokens=1500, temperature=0.7)
+
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1:
+            raw_json = raw[start : end + 1]
+        else:
+            raw_json = raw
+
+        data = json.loads(raw_json)
+        questions = data.get("questions", [])
+        return [q.strip() for q in questions if q.strip()]
+    except Exception as e:
+        logger.error(f"QUESTIONS: Failed to generate questions for {document_name}: {e}")
+        return []
+
+
+def generate_suggested_questions_hybrid(
+    llm_engine,
+    chunks: List[str],
+    num_documents: int = 1,
+) -> Dict[str, Any]:
+    """
+    Generate hybrid suggested questions: comparative + document-specific.
+
+    Args:
+        llm_engine: LLM engine instance
+        chunks: All chunks available
+        num_documents: Number of documents
+
+    Returns:
+        Dict with comparative_questions and document_questions
+    """
+    result = {
+        "comparative_questions": [],
+        "document_questions": {},
+        "questions": []  # Flattened for backward compatibility
+    }
+
+    if not chunks:
+        return result
+
+    # Generate comparative questions if multiple documents
+    if num_documents > 1:
+        comparative = generate_comparative_questions(llm_engine, chunks[:30], num_documents)
+        result["comparative_questions"] = comparative
+        result["questions"].extend(comparative)
+
+    return result
 
 
 def generate_quiz_from_chunks(
@@ -64,71 +221,41 @@ def generate_quiz_from_chunks(
     num_questions: int = 5,
 ) -> Dict[str, Any]:
     """
-    Generate a quiz JSON structure from existing chunks using the LLM engine.
+    Backward-compatible wrapper for generating suggested questions.
+    Generates comparative questions from provided chunks.
 
     Args:
-        llm_engine: LLM engine instance with a .generate(prompt, max_tokens, temperature) method
-        chunks: List of chunks to use as source material
-        num_questions: Number of questions to generate
+        llm_engine: LLM engine instance
+        chunks: Chunks to generate questions from
+        num_questions: Number of questions (used for count estimation)
 
     Returns:
-        Dict with keys:
-            - questions: list of question objects, or empty list on failure
-            - raw: raw LLM response (for debugging)
+        Dict with questions list for backward compatibility
     """
-    import json
-
     if not chunks:
-        return {"questions": [], "raw": ""}
-
-    prompt = build_quiz_prompt(chunks, num_questions=num_questions)
+        return {"questions": []}
 
     try:
-        logger.info(f"QUIZ: Generating quiz with {num_questions} questions from {len(chunks)} chunk(s)")
-        raw = llm_engine.generate(prompt, max_tokens=3000, temperature=0.7)
-
-        # Try to parse JSON from the response, even if there is stray text
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            raw_json = raw[start : end + 1]
-        else:
-            raw_json = raw
-
-        try:
-            data = json.loads(raw_json)
-            questions = data.get("questions", [])
-        except json.JSONDecodeError as je:
-            logger.error(f"QUIZ: Failed to parse JSON response: {je}")
-            logger.debug(f"QUIZ: Raw response: {raw[:500]}...")
-            return {"questions": [], "raw": raw}
-
-        # Basic validation
-        cleaned_questions = []
-        for q in questions:
-            question_text = q.get("question", "").strip()
-            options = q.get("options", [])
-            correct_index = q.get("correct_index", 0)
-            explanation = q.get("explanation", "").strip()
-
-            if not question_text or not options:
-                continue
-
-            if not (0 <= int(correct_index) < len(options)):
-                correct_index = 0
-
-            cleaned_questions.append(
-                {
-                    "question": question_text,
-                    "options": options,
-                    "correct_index": int(correct_index),
-                    "explanation": explanation,
-                }
-            )
-
-        return {"questions": cleaned_questions, "raw": raw}
+        logger.info(f"QUIZ: Generating {num_questions} suggested questions from {len(chunks)} chunks")
+        
+        # Generate comparative questions
+        comparative = generate_comparative_questions(llm_engine, chunks, num_documents=1)
+        
+        # Convert list of strings to list of dicts for frontend
+        question_dicts = []
+        for idx, q in enumerate(comparative, 1):
+            question_dicts.append({
+                "question": q,
+                "type": "comparative"
+            })
+        
+        # Return in format expected by frontend
+        return {
+            "questions": question_dicts if question_dicts else [],
+            "raw": ""
+        }
     except Exception as e:
-        logger.error(f"QUIZ: Failed to generate quiz: {e}", exc_info=True)
+        logger.error(f"QUIZ: Failed to generate questions: {e}", exc_info=True)
         return {"questions": [], "raw": ""}
 
 
