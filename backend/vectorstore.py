@@ -74,7 +74,7 @@ class FAISSVectorStore:
                         f"Index dimension ({self.index.d}) doesn't match embedding dimension "
                         f"({self.embedding_dim}). Creating new index."
                     )
-                    self.index = faiss.IndexFlatL2(self.embedding_dim)
+                    self.index = faiss.IndexFlatIP(self.embedding_dim)
                     self.chunks = []
                 else:
                     # Load metadata
@@ -112,11 +112,11 @@ class FAISSVectorStore:
                         self.chunks = []
             except Exception as e:
                 logger.error(f"Error loading index: {e}. Creating new index.", exc_info=True)
-                self.index = faiss.IndexFlatL2(self.embedding_dim)
+                self.index = faiss.IndexFlatIP(self.embedding_dim)
                 self.chunks = []
         else:
             logger.info("No existing index found, creating new one")
-            self.index = faiss.IndexFlatL2(self.embedding_dim)
+            self.index = faiss.IndexFlatIP(self.embedding_dim)
             self.chunks = []
     
     def add_chunks(self, chunks: List[str], document_name: str = "unknown") -> None:
@@ -230,7 +230,9 @@ class FAISSVectorStore:
             for idx, dist in zip(indices[0], distances[0]):
                 if 0 <= idx < len(self.chunks):
                     idx_int = int(idx)
-                    similarity = float(1.0 / (1.0 + dist))
+                    # Inner product returns cosine similarity for normalized vectors
+                    # Range is [-1, 1], normalize to [0, 1] range: (cosine_sim + 1) / 2
+                    similarity = float(max(0.0, (dist + 1.0) / 2.0))
                     # Include metadata for backtracking
                     chunk_metadata = self.metadata[idx_int] if idx_int < len(self.metadata) else {"source_doc": "unknown"}
                     results.append((self.chunks[idx_int], similarity, chunk_metadata))
@@ -254,7 +256,7 @@ class FAISSVectorStore:
         try:
             old_count = len(self.chunks)
             logger.info(f"CLEAR STEP 1: Resetting index (current chunks: {old_count})")
-            self.index = faiss.IndexFlatL2(self.embedding_dim)
+            self.index = faiss.IndexFlatIP(self.embedding_dim)
             self.chunks = []
             self.metadata = []
             logger.info("CLEAR STEP 1 COMPLETE: Index and metadata cleared")

@@ -176,6 +176,28 @@ async def health() -> dict:
         )
 
 
+@app.get("/config")
+async def get_config() -> dict:
+    """Get system configuration endpoint."""
+    try:
+        return {
+            "llm_model": settings.LLM_MODEL,
+            "llm_provider": settings.LLM_PROVIDER,
+            "embedding_model": settings.EMBEDDING_MODEL,
+            "chunk_size": settings.CHUNK_SIZE,
+            "chunk_overlap": settings.CHUNK_OVERLAP,
+            "temperature": settings.TEMPERATURE,
+            "max_tokens": settings.MAX_TOKENS,
+            "top_k": settings.TOP_K
+        }
+    except Exception as e:
+        logger.error(f"Config retrieval failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve configuration"
+        )
+
+
 @app.post("/upload")
 async def upload(files: List[UploadFile] = File(...)) -> dict:
     """

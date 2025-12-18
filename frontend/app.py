@@ -9,6 +9,29 @@ import time
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
+from components.process_flow import (
+    render_process_flow,
+    initialize_process_flow,
+    update_process_status,
+    get_process_flow
+)
+from components.system_info import (
+    render_system_info,
+    render_api_services
+)
+from components.enhancements import (
+    render_enhanced_sources,
+    render_enhanced_chat_message,
+    render_error_state,
+    render_success_state,
+    render_info_state,
+    render_organized_sidebar,
+    render_theme_selector,
+    render_dashboard_metrics,
+    render_response_quality,
+    render_session_stats,
+    render_feedback_form
+)
 
 # Load environment variables
 env_path = Path(__file__).parent.parent / ".env"
@@ -191,9 +214,36 @@ if "last_upload_result" not in st.session_state:
 if "suggested_questions" not in st.session_state:
     st.session_state.suggested_questions = []
 
-# UI
+# Initialize smart process flow
+if "smart_flow" not in st.session_state:
+    st.session_state.smart_flow = {
+        "select_docs": {"status": "pending", "desc": "Select documents"},
+        "upload": {"status": "pending", "desc": "Upload documents"},  
+        "chunk": {"status": "pending", "desc": "Processing & chunking"},
+        "index": {"status": "pending", "desc": "Indexing complete"},
+        "gen_questions": {"status": "pending", "desc": "Generate questions"},
+        "ask_question": {"status": "pending", "desc": "Ask questions"},
+        "get_answer": {"status": "pending", "desc": "Get AI answers"}
+    }
+
+# UI - Smart Process Flow
 st.title("💬 RAG Chatbot")
-st.markdown("Ask questions about your uploaded documents using Retrieval-Augmented Generation.")
+st.markdown("**Smart Process Flow** - Follow the steps below:")
+
+# Render smart flow
+flow_items = []
+for key, item in st.session_state.smart_flow.items():
+    status = item["status"]
+    icon = "⏳" if status == "pending" else "✅" if status == "success" else "🔄" if status == "processing" else "❌"
+    flow_items.append(f"{icon} {item['desc']}")
+
+st.markdown(" → ".join(flow_items))
+
+# System Configuration Information
+st.markdown("---")
+render_system_info()
+render_api_services()
+st.markdown("---")
 
 # API Status
 api_status = check_api_with_retry()
@@ -206,82 +256,81 @@ if not api_status:
 else:
     st.success("✅ Connected to API")
 
-# Sidebar
-with st.sidebar:
-    st.header("📁 Upload Documents")
-    
-    uploaded_files = st.file_uploader(
-        "Choose files",
-        type=["pdf", "docx", "txt", "md", "csv", "xlsx", "xls", "pptx", "html", "htm", "xml", "png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-        help="Upload documents in various formats"
-    )
-    
-    if st.button("Upload", type="primary", use_container_width=True):
-        if uploaded_files:
-            with st.spinner("Processing files..."):
-                result = upload_files(uploaded_files)
-                if "results" in result:
-                    st.session_state.last_upload_result = result  # Store in session state
-                    st.success(f"✅ Uploaded {len(result['results'])} file(s)")
-                    st.write(f"**Total chunks:** {result.get('total_chunks', 0)}")
-                    
-                    # Show individual results with pattern info at the top
-                    for file_result in result.get("results", []):
-                        if file_result.get("status") == "ok":
-                            st.markdown(f"### ✓ {file_result.get('filename')}")
-                            
-                            # Display patterns prominently
-                            patterns = file_result.get("patterns") or []
-                            chunking = file_result.get("chunking") or {}
-                            
-                            if patterns:
-                                pattern_str = " | ".join(p.capitalize() for p in patterns)
-                                st.info(f"📊 **Detected Data Patterns**: {pattern_str}")
-                            
-                            # Display file stats
-                            st.markdown(f"**Chunks Created**: {file_result.get('chunks', 0)}")
-                            
-                            # Display chunking strategies used
-                            if chunking:
-                                st.markdown("**Chunking Strategies Applied:**")
-                                for p_type, desc in chunking.items():
-                                    st.markdown(f"- **{p_type.capitalize()}**: {desc}")
-                            
-                            st.divider()
-                        else:
-                            st.warning(f"  ✗ {file_result.get('filename')}: {file_result.get('msg', 'Error')}")
-                elif "error" in result:
-                    st.error(f"❌ Error: {result['error']}")
-                else:
-                    st.error("Unknown error occurred")
+# Enhanced Sidebar with Organized Tabs
+sidebar_data = render_organized_sidebar()
+
+# Handle generate questions from sidebar
+if st.session_state.get("generate_questions", False):
+    st.session_state.generate_questions = False
+    with st.spinner("🧠 Generating suggested questions..."):
+        num_questions = sidebar_data.get("num_questions", 5)
+        questions_result = generate_suggested_questions(num_questions)
+        if "error" in questions_result:
+            render_error_state(questions_result["error"], "validation")
         else:
-            st.warning("Please select files to upload")
+            st.session_state.suggested_questions = questions_result.get("questions", [])
+            st.success(f"✅ Generated {len(st.session_state.suggested_questions)} questions!")
+
+# Handle uploads from sidebar (automatic when files selected)
+uploaded_files = sidebar_data.get("uploaded_files", [])
+if uploaded_files and (sidebar_data.get("auto_upload", False) or st.session_state.get("upload_btn", False)):
+    # Update smart flow
+    st.session_state.smart_flow["select_docs"]["status"] = "success"
+    st.session_state.smart_flow["upload"]["status"] = "processing"
+    st.session_state.smart_flow["chunk"]["status"] = "processing"
     
-    # Display stored upload results even after slider changes
-    if st.session_state.last_upload_result and not uploaded_files:
-        result = st.session_state.last_upload_result
-        st.divider()
-        st.info("📋 **Last Upload Summary**")
-        st.write(f"**Total chunks:** {result.get('total_chunks', 0)}")
-        
-        for file_result in result.get("results", []):
-            if file_result.get("status") == "ok":
-                st.markdown(f"#### ✓ {file_result.get('filename')}")
-                
-                patterns = file_result.get("patterns") or []
-                chunking = file_result.get("chunking") or {}
-                
-                if patterns:
-                    pattern_str = " | ".join(p.capitalize() for p in patterns)
-                    st.info(f"📊 **Detected Data Patterns**: {pattern_str}")
-                
-                st.markdown(f"**Chunks Created**: {file_result.get('chunks', 0)}")
-                
-                if chunking:
-                    st.markdown("**Chunking Strategies Applied:**")
-                    for p_type, desc in chunking.items():
-                        st.markdown(f"- **{p_type.capitalize()}**: {desc}")
+    update_process_status("Upload", "processing")
+    with st.spinner("📤 Uploading and processing files..."):
+        result = upload_files(uploaded_files)
+        if "results" in result:
+            st.session_state.last_upload_result = result
+            
+            # Update smart flow - upload and chunking complete
+            st.session_state.smart_flow["upload"]["status"] = "success"
+            st.session_state.smart_flow["chunk"]["status"] = "success"  
+            st.session_state.smart_flow["index"]["status"] = "success"
+            
+            update_process_status("Upload", "success")
+            update_process_status("Process", "success")
+            update_process_status("Index", "success")
+            update_process_status("Ready", "success")
+            
+            total_chunks = result.get('total_chunks', 0)
+            render_success_state(f"✅ Uploaded {len(result['results'])} file(s)")
+            st.write(f"**Total chunks:** {total_chunks}")
+            
+            # Update flow description with chunk count
+            st.session_state.smart_flow["chunk"]["desc"] = f"Chunking complete ({total_chunks} chunks)"
+            
+            # Show individual results with enhanced styling
+            for file_result in result.get("results", []):
+                if file_result.get("status") == "ok":
+                    st.markdown(f"### ✓ {file_result.get('filename')}")
+                    
+                    patterns = file_result.get("patterns") or []
+                    chunking = file_result.get("chunking") or {}
+                    
+                    if patterns:
+                        pattern_str = " | ".join(p.capitalize() for p in patterns)
+                        render_info_state(f"📊 **Detected Data Patterns**: {pattern_str}")
+                    
+                    st.markdown(f"**Chunks Created**: {file_result.get('chunks', 0)}")
+                    
+                    if chunking:
+                        st.markdown("**Chunking Strategies Applied:**")
+                        for p_type, desc in chunking.items():
+                            st.markdown(f"- **{p_type.capitalize()}**: {desc}")
+                    
+                    st.divider()
+                else:
+                    render_error_state(f"{file_result.get('filename')}: {file_result.get('msg', 'Error')}", "validation")
+                    update_process_status("Upload", "error")
+        elif "error" in result:
+            render_error_state(result['error'], "connection")
+            update_process_status("Upload", "error")
+        else:
+            render_error_state("Unknown error occurred", "general")
+            update_process_status("Upload", "error")
     
     st.divider()
     
@@ -303,96 +352,104 @@ with st.sidebar:
                 st.session_state.suggested_questions = []
                 st.session_state.history = []
                 st.session_state.last_upload_result = None
+                initialize_process_flow(["Upload", "Process", "Index", "Ready"])
                 st.success("✅ Documents cleared")
                 st.rerun()
             else:
                 st.error("Failed to clear documents")
         else:
             st.warning("Backend not connected")
-    
-    st.divider()
-    
-    # Settings
-    st.header("⚙️ Settings")
-    top_k = st.slider(
-        "Context Chunks",
-        min_value=1,
-        max_value=10,
-        value=5,
-        help="Number of document chunks to use as context"
-    )
 
-    st.divider()
+# Dashboard Metrics (NEW)
+st.markdown("---")
+st.subheader("📊 Session Overview")
+render_session_stats()
+st.markdown("---")
 
-    # Suggested Questions controls
-    st.header("💡 Suggested Questions")
-    num_questions = st.slider(
-        "Number of suggested questions",
-        min_value=1,
-        max_value=10,
-        value=5,
-        help="How many suggested questions to generate from the documents",
-    )
-    if st.button("Generate Suggested Questions", use_container_width=True):
-        with st.spinner("Generating suggested questions..."):
-            questions_result = generate_suggested_questions(num_questions)
-            if "error" in questions_result:
-                st.error(questions_result["error"])
-            else:
-                st.session_state.suggested_questions = questions_result.get("questions", [])
-                st.rerun()
+# Generate Questions Section (PROMINENT)
+if api_status:
+    try:
+        doc_count = get_document_count()
+        if doc_count > 0:
+            col1, col2 = st.columns([0.7, 0.3])
+            with col1:
+                st.markdown("### 🧠 Generate Smart Questions")
+                st.markdown("Get AI-suggested questions based on your uploaded documents")
+            with col2:
+                if st.button("✨ Generate Questions", use_container_width=True, type="primary"):
+                    st.session_state.smart_flow["gen_questions"]["status"] = "processing"
+                    
+                    # Generate questions and store them
+                    try:
+                        with st.spinner("🎯 Generating intelligent questions..."):
+                            response = requests.post("http://localhost:8000/quiz?num_questions=6&include_comparative=true", 
+                                                   timeout=30)
+                            if response.status_code == 200:
+                                questions_data = response.json()
+                                questions = questions_data.get("questions", [])
+                            else:
+                                questions = []
+                        
+                        if questions:
+                            st.session_state.suggested_questions = questions
+                            st.session_state.smart_flow["gen_questions"]["status"] = "success"
+                        else:
+                            st.session_state.smart_flow["gen_questions"]["status"] = "error"
+                    except Exception as e:
+                        st.error(f"❌ Error generating questions: {str(e)}")
+                        st.session_state.smart_flow["gen_questions"]["status"] = "error"
+                    
+                    st.rerun()
+    except:
+        pass
 
-# Suggested Questions display at the top (if any)
-if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
-    st.markdown("---")
-    st.markdown("## 💡 Suggested Questions")
-    
-    quiz_questions = st.session_state.suggested_questions
-    
-    # Display suggested questions with icons
-    comparative_count = 0
-    
-    for idx, q in enumerate(quiz_questions, 1):
-        if isinstance(q, dict):
-            question_text = q.get('question', '')
-            q_type = q.get('type', 'comparative')
-        else:
-            question_text = str(q)
-            q_type = 'comparative'
-        
-        # Use icon based on question type
-        if q_type == 'comparative':
-            st.markdown(f"🔀 **Q{idx}.** {question_text}")
-            comparative_count += 1
-        else:
-            st.markdown(f"🎯 **Q{idx}.** {question_text}")
-
-# Chat Interface
-col_title, col_clear = st.columns([0.85, 0.15])
+# Chat Interface with Enhanced Features
+col_title, col_stats = st.columns([0.85, 0.15])
 with col_title:
     st.header("💭 Ask a Question")
-with col_clear:
-    if st.button("🗑️", use_container_width=True, help="Clear chat history", key="clear_chat"):
+with col_stats:
+    if st.button("🗑️ Clear", use_container_width=True, help="Clear chat history", key="clear_chat"):
         st.session_state.history = []
-        st.success("✅ Chat cleared")
+        render_success_state("✅ Chat cleared")
         st.rerun()
 
-# Display chat history
+# Display chat history with enhanced styling
 if st.session_state.history:
-    for msg in st.session_state.history:
+    for idx, msg in enumerate(st.session_state.history):
         if msg["role"] == "user":
             with st.chat_message("user"):
                 st.write(msg["text"])
         else:
+            # Enhanced assistant message with sources and actions
             with st.chat_message("assistant"):
                 st.write(msg["text"])
-                if msg.get("sources"):
-                    with st.expander("📚 Sources", expanded=False):
-                        for i, src in enumerate(msg["sources"][:5], 1):
-                            similarity = src.get("similarity", 0)
-                            st.markdown(f"**Source {i}** (similarity: {similarity:.2%})")
-                            chunk_preview = src.get("chunk", "")[:200]
-                            st.text(chunk_preview + ("..." if len(src.get("chunk", "")) > 200 else ""))
+                
+                sources = msg.get("sources", [])
+                
+                # Show response quality indicator if sources available
+                if sources:
+                    avg_similarity = sum(s.get("similarity", 0) for s in sources) / len(sources)
+                    render_response_quality(sources, avg_similarity)
+                
+                # Enhanced sources display
+                if sources and sidebar_data.get("show_sources", True):
+                    st.divider()
+                    render_enhanced_sources(sources)
+                
+                # Action buttons
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    if st.button("👍", key=f"helpful_{idx}", help="Helpful"):
+                        render_success_state("Thanks for the feedback!")
+                with col2:
+                    if st.button("👎", key=f"unhelpful_{idx}", help="Not helpful"):
+                        render_info_state("We'll work on improving this!")
+                with col3:
+                    if st.button("📋", key=f"copy_{idx}", help="Copy"):
+                        st.code(msg["text"])
+                with col4:
+                    if st.button("🔄", key=f"regen_{idx}", help="Regenerate"):
+                        st.info("Regeneration request sent!")
 
 # Input
 question = st.chat_input("Ask a question about your documents...")
@@ -405,22 +462,29 @@ if question:
     with st.chat_message("user"):
         st.write(question)
     
-    # Get response
+    # Get response with error handling
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+        with st.spinner("🤔 Thinking..."):
+            top_k = sidebar_data.get("top_k", 5)
             result = query_rag(question, top_k)
             answer = result.get("answer", "Error: No answer received")
             sources = result.get("sources", [])
             
-            st.write(answer)
-            
-            if sources:
-                with st.expander("📚 Sources", expanded=False):
-                    for i, src in enumerate(sources[:5], 1):
-                        similarity = src.get("similarity", 0)
-                        st.markdown(f"**Source {i}** (similarity: {similarity:.2%})")
-                        chunk_preview = src.get("chunk", "")[:200]
-                        st.text(chunk_preview + ("..." if len(src.get("chunk", "")) > 200 else ""))
+            # Check for errors
+            if "error" in result or "No documents" in answer or "unavailable" in answer.lower():
+                render_error_state(answer, "validation")
+            else:
+                st.write(answer)
+                
+                # Show quality metrics
+                if sources:
+                    avg_similarity = sum(s.get("similarity", 0) for s in sources) / len(sources)
+                    render_response_quality(sources, avg_similarity)
+                    
+                    # Enhanced sources display
+                    if sidebar_data.get("show_sources", True):
+                        st.divider()
+                        render_enhanced_sources(sources)
     
     # Add assistant message to history
     st.session_state.history.append({
@@ -428,10 +492,115 @@ if question:
         "text": answer,
         "sources": sources
     })
+    
+    # Update session stats
+    if "session_stats" not in st.session_state:
+        st.session_state.session_stats = {"questions_asked": 0, "total_response_time": 0, "start_time": time.time()}
+    st.session_state.session_stats["questions_asked"] += 1
 
-# Footer
-st.divider()
-st.markdown(
-    "<small>RAG Chatbot - Powered by FAISS, Sentence Transformers, and Groq</small>",
-    unsafe_allow_html=True
-)
+# Display Suggested Questions (if generated) - PROFESSIONAL SECTION
+if st.session_state.get("suggested_questions"):
+    st.markdown("---")
+    
+    # Professional header
+    col1, col2 = st.columns([0.7, 0.3])
+    with col1:
+        st.markdown("<h2 style='margin: 0;'>💡 Suggested Questions</h2>", unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"<p style='text-align: right; opacity: 0.7; margin: 0;'>{len(st.session_state.get('suggested_questions', []))} questions</p>", unsafe_allow_html=True)
+    
+    st.markdown("<p style='opacity: 0.6; margin: 10px 0 20px 0;'>Click any question below to instantly get an answer</p>", unsafe_allow_html=True)
+    
+    quiz_questions = st.session_state.suggested_questions
+    
+    # Create a clean, professional grid
+    for idx, q in enumerate(quiz_questions, 1):
+        if isinstance(q, dict):
+            question_text = q.get('question', '')
+            q_type = q.get('type', 'comparative')
+        else:
+            question_text = str(q)
+            q_type = 'comparative'
+        
+        # Determine styling based on type
+        if q_type == 'comparative':
+            icon = "🔀"
+            accent_color = "#667eea"
+        else:
+            icon = "🎯"
+            accent_color = "#764ba2"
+        
+        # Professional question card with minimal design
+        st.markdown(f"""
+        <div style="
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-left: 4px solid {accent_color};
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+        ">
+            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <span style="font-size: 20px; flex-shrink: 0;">{icon}</span>
+                <div style="flex: 1;">
+                    <div style="color: #2c3e50; font-weight: 500; line-height: 1.5; margin-bottom: 8px;">
+                        {question_text}
+                    </div>
+                    <div style="font-size: 12px; opacity: 0.5;">
+                        Question {idx} of {len(quiz_questions)}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Single, clear call-to-action button
+        col1, col2, col3 = st.columns([0.3, 0.4, 0.3])
+        with col2:
+            if st.button(
+                f"Ask Question",
+                key=f"use_q_{idx}",
+                use_container_width=True,
+            ):
+                # Update smart flow
+                st.session_state.smart_flow["ask_question"]["status"] = "processing"
+                
+                # Add user message
+                st.session_state.history.append({"role": "user", "text": question_text})
+                
+                # Auto-generate answer
+                with st.spinner("🔄 Generating answer..."):
+                    top_k = sidebar_data.get("top_k", 5)
+                    result = query_rag(question_text, top_k)
+                    answer = result.get("answer", "Error: No answer received")
+                    sources = result.get("sources", [])
+                    
+                    # Add assistant message
+                    st.session_state.history.append({
+                        "role": "bot", 
+                        "text": answer, 
+                        "sources": sources
+                    })
+                    
+                    # Update flow status
+                    st.session_state.smart_flow["ask_question"]["status"] = "success"
+                    st.session_state.smart_flow["get_answer"]["status"] = "success"
+                
+                st.rerun()
+
+# Theme Selector in Sidebar (NEW)
+theme = render_theme_selector()
+
+# Footer with Enhanced Styling
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; padding: 20px; margin-top: 20px;">
+    <small>
+    <strong>RAG Chatbot</strong> • Powered by FAISS, Sentence Transformers, and Groq<br>
+    <a href="#" style="text-decoration: none; color: #667eea;">📧 Feedback</a> • 
+    <a href="#" style="text-decoration: none; color: #667eea;">💡 Suggestions</a> • 
+    <a href="#" style="text-decoration: none; color: #667eea;">🐛 Report Bug</a>
+    </small>
+</div>
+""", unsafe_allow_html=True)

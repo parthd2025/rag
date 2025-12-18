@@ -1,0 +1,216 @@
+"""
+ROOT FOLDER CLEANUP PROPOSAL
+============================
+
+This report categorizes all files in the root directory and proposes organization.
+NO CHANGES WILL BE MADE WITHOUT YOUR APPROVAL.
+"""
+
+# CURRENT ROOT FOLDER ANALYSIS
+# =============================
+
+## 📋 FILES BY CATEGORY
+
+### 🔴 ENVIRONMENT & CONFIG FILES (Keep in root or move to config/)
+```
+✓ .env                      → Keep in root (environment variables)
+✓ .env.example              → Consider: docs/examples/ or keep
+✓ env.template              → Consider: docs/examples/ or DELETE (duplicate of .env.example)
+✓ pytest.ini                → Keep in root (pytest config)
+✓ .gitignore                → Keep in root (git config)
+```
+
+### 📕 DOCUMENTATION FILES (Consider: docs/guides/)
+```
+REFINEMENT_COMPLETION_REPORT.md       → docs/guides/
+REFINEMENT_IMPLEMENTATION_SUMMARY.md  → docs/guides/
+ARCHITECTURE_REFINEMENT_GUIDE.md      → docs/guides/
+REFINEMENT_VISUAL_SUMMARY.txt         → docs/guides/
+IMPLEMENTATION_CHECKLIST.md           → docs/guides/
+NEW_FILES_REFERENCE.md                → docs/guides/
+README_REFINEMENTS.md                 → docs/guides/
+CONFIGURATION_CHECK.md                → docs/guides/
+IMPROVEMENTS_SUMMARY.md               → docs/guides/
+DELIVERY_SUMMARY.txt                  → docs/guides/
+```
+
+### 🐍 UTILITY SCRIPTS (Move to scripts/)
+```
+check_health.py             → scripts/
+document_list.py            → scripts/
+extract_questions.py        → scripts/
+```
+
+### ⚙️ RUN SCRIPTS (Consider: scripts/run/ or keep in root)
+```
+run-both.ps1                → scripts/run/
+run.bat                     → scripts/run/
+run.sh                      → scripts/run/
+```
+
+### 📂 DIRECTORIES (Organization)
+```
+✓ backend/                  → Keep (main backend code)
+✓ frontend/                 → Keep (main frontend code)
+✓ tests/                    → Keep (test files)
+✓ .git/                     → Keep (git repository)
+✓ venv/                     → Keep (virtual environment)
+✓ __pycache__/              → Keep (Python cache)
+  data/                     → Keep (data files)
+  documents/                → Keep (sample documents)
+  chroma_db/                → Keep (database files)
+  flows/                    → Keep (flow diagrams)
+  logs/                     → Keep (application logs)
+  models/                   → Keep (model files)
+  Helping docs/             → Consider: docs/reference/ or DELETE (unclear purpose)
+  config/                   → Keep/Create (configuration files)
+  docs/                     → Keep (documentation)
+```
+
+### ⚠️ LOG FILES (Archive or clean)
+```
+frontend_debug.log          → logs/archived/
+streamlit_error.log         → logs/archived/
+```
+
+### 📦 PYTHON REQUIREMENTS
+```
+✓ requirements.txt          → Keep (dependencies)
+✓ requirements-dev.txt      → Keep (dev dependencies)
+```
+
+### 📖 MAIN DOCS
+```
+✓ README.md                 → Keep (main documentation)
+```
+
+---
+
+## 🗂️ PROPOSED NEW STRUCTURE
+
+```
+RAG/
+├── README.md                          ← Main documentation (keep in root)
+├── requirements.txt                   ← Keep
+├── requirements-dev.txt               ← Keep
+├── pytest.ini                         ← Keep
+├── .env                               ← Keep
+├── .gitignore                         ← Keep
+│
+├── backend/                           ← Main backend (no change)
+├── frontend/                          ← Main frontend (no change)
+├── tests/                             ← Tests (no change)
+├── data/                              ← Data files (no change)
+│
+├── docs/
+│   ├── guides/
+│   │   ├── ARCHITECTURE_REFINEMENT_GUIDE.md
+│   │   ├── REFINEMENT_IMPLEMENTATION_SUMMARY.md
+│   │   ├── REFINEMENT_COMPLETION_REPORT.md
+│   │   ├── REFINEMENT_VISUAL_SUMMARY.txt
+│   │   ├── IMPLEMENTATION_CHECKLIST.md
+│   │   ├── NEW_FILES_REFERENCE.md
+│   │   ├── README_REFINEMENTS.md
+│   │   ├── CONFIGURATION_CHECK.md
+│   │   ├── IMPROVEMENTS_SUMMARY.md
+│   │   ├── DELIVERY_SUMMARY.txt
+│   │   └── examples/
+│   │       ├── env.template
+│   │       └── .env.example
+│   └── reference/
+│       └── Helping docs/              (if needed, else delete)
+│
+├── scripts/
+│   ├── check_health.py
+│   ├── document_list.py
+│   ├── extract_questions.py
+│   └── run/
+│       ├── run-both.ps1
+│       ├── run.bat
+│       └── run.sh
+│
+├── logs/
+│   ├── archived/
+│   │   ├── frontend_debug.log
+│   │   └── streamlit_error.log
+│   └── (runtime logs here)
+│
+├── config/                            (for configuration files)
+├── models/                            (existing)
+├── chroma_db/                         (existing)
+├── flows/                             (existing)
+└── venv/                              (existing)
+```
+
+---
+
+## 🎯 CLEANUP TASKS (FOR YOUR APPROVAL)
+
+### ✅ DEFINITELY MOVE
+- [ ] `REFINEMENT_COMPLETION_REPORT.md` → `docs/guides/`
+- [ ] `REFINEMENT_IMPLEMENTATION_SUMMARY.md` → `docs/guides/`
+- [ ] `ARCHITECTURE_REFINEMENT_GUIDE.md` → `docs/guides/`
+- [ ] `REFINEMENT_VISUAL_SUMMARY.txt` → `docs/guides/`
+- [ ] `IMPLEMENTATION_CHECKLIST.md` → `docs/guides/`
+- [ ] `NEW_FILES_REFERENCE.md` → `docs/guides/`
+- [ ] `README_REFINEMENTS.md` → `docs/guides/`
+- [ ] `check_health.py` → `scripts/`
+- [ ] `document_list.py` → `scripts/`
+- [ ] `extract_questions.py` → `scripts/`
+- [ ] `run-both.ps1` → `scripts/run/`
+- [ ] `run.bat` → `scripts/run/`
+- [ ] `run.sh` → `scripts/run/`
+- [ ] `frontend_debug.log` → `logs/archived/`
+- [ ] `streamlit_error.log` → `logs/archived/`
+
+### ❓ PROBABLY MOVE (ask about these)
+- [ ] `CONFIGURATION_CHECK.md` → `docs/guides/`?
+- [ ] `IMPROVEMENTS_SUMMARY.md` → `docs/guides/`?
+- [ ] `DELIVERY_SUMMARY.txt` → `docs/guides/`?
+
+### ❓ DELETE OR KEEP?
+- [ ] `env.template` → Move to `docs/examples/` or DELETE (same as .env.example)?
+- [ ] `Helping docs/` → Move to `docs/reference/` or DELETE?
+
+### ✓ KEEP IN ROOT
+```
+✓ README.md
+✓ requirements.txt
+✓ requirements-dev.txt
+✓ pytest.ini
+✓ .env
+✓ .gitignore
+✓ backend/
+✓ frontend/
+✓ tests/
+✓ data/
+✓ models/
+✓ chroma_db/
+✓ flows/
+✓ logs/
+✓ documents/
+✓ .git/
+✓ venv/
+```
+
+---
+
+## 📊 ROOT FOLDER CLEANUP SUMMARY
+
+**Current:** 31 items in root (too cluttered)
+**After:** ~10 items in root (clean and organized)
+
+**Reduction:** ~70% fewer items in root directory
+
+---
+
+## ✋ NEXT STEPS - PLEASE CHOOSE:
+
+1. **Approve all moves** → I'll reorganize everything
+2. **Approve specific items** → Tell me which ones
+3. **Ask about specific files** → Which ones do you have questions about?
+4. **Customize the structure** → What changes would you like?
+
+---
+
+**Please review and let me know what to do!**
