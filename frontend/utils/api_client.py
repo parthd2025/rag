@@ -1,95 +1,173 @@
-"""API client utilities."""
+"""
+API Client - Professional REST API Integration
+Handles all backend communication with retry logic and error handling
+"""
 
 import requests
-import json
-from typing import Dict, List, Any, Optional
 import streamlit as st
+from typing import Optional, Dict, Any, List
+import json
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class APIClient:
-    """HTTP client for backend API."""
+    """Professional API client with advanced error handling and retry logic."""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
-        self.base_url = base_url
-        self.timeout = 30
+    def __init__(self, base_url: str, timeout: int = 30, max_retries: int = 3):
+        """Initialize API client with configuration."""
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.session = requests.Session()
+        self._setup_session()
     
-    def _make_request(
-        self,
-        method: str,
-        endpoint: str,
-        json_data: Optional[Dict] = None,
-        files: Optional[Dict] = None,
-        params: Optional[Dict] = None
-    ) -> Dict[str, Any]:
-        """Make HTTP request to API."""
-        url = f"{self.base_url}/api{endpoint}"
-        
+    def _setup_session(self):
+        """Setup session with headers and optimizations."""
+        self.session.headers.update({
+            "User-Agent": "RAG-Chatbot-Frontend/1.0",
+            "Accept": "application/json",
+        })
+    
+    def health_check(self) -> bool:
+        """Check if backend is healthy and responsive."""
         try:
-            if method == "GET":
-                response = requests.get(url, params=params, timeout=self.timeout)
-            elif method == "POST":
-                response = requests.post(url, json=json_data, files=files, timeout=self.timeout)
-            elif method == "PUT":
-                response = requests.put(url, json=json_data, timeout=self.timeout)
-            elif method == "DELETE":
-                response = requests.delete(url, timeout=self.timeout)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-            
+            response = self.session.get(
+                f"{self.base_url}/health",
+                timeout=5,
+            )
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return False
+    
+    def get_config(self) -> Optional[Dict[str, Any]]:
+        """Retrieve system configuration from backend."""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/config",
+                timeout=self.timeout,
+            )
             response.raise_for_status()
             return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get config: {e}")
+            return None
+    
+    def upload_document(self, file_data: bytes, filename: str) -> Optional[Dict[str, Any]]:
+        """Upload document to backend with retry logic."""
+        files = {"file": (filename, file_data)}
         
-        except requests.exceptions.RequestException as e:
-            st.error(f"API Error: {str(e)}")
+        for attempt in range(self.max_retries):
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/upload",
+                    files=files,
+                    timeout=120,
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.Timeout:
+                if attempt == self.max_retries - 1:
+                    raise
+                logger.warning(f"Upload timeout, retrying... ({attempt + 1}/{self.max_retries})")
+            except Exception as e:
+                logger.error(f"Upload failed: {e}")
+                if attempt == self.max_retries - 1:
+                    raise
+        
+        return None
+    
+    def query(
+        self,
+        question: str,
+        top_k: int = 5
+    ) -> Optional[Dict[str, Any]]:
+        """Submit question and get answer with sources."""
+        payload = {
+            "question": question,
+            "top_k": top_k,
+        }
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/chat",
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.Timeout:
+            raise TimeoutError(f"Request timed out after {self.timeout}s")
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 404:
+                raise ValueError("No documents uploaded. Please upload documents first.")
+            raise
+        except Exception as e:
+            logger.error(f"Query failed: {e}")
             raise
     
-    def chat(self, query: str, top_k: int = 5, temperature: float = 0.7) -> Dict:
-        """Send chat query to API."""
-        return self._make_request(
-            "POST",
-            "/chat",
-            json_data={"query": query, "top_k": top_k, "temperature": temperature}
-        )
+    def generate_quiz(self, num_questions: int = 5) -> Optional[Dict[str, Any]]:
+        """Generate quiz from uploaded documents."""
+        payload = {"num_questions": min(num_questions, 20)}
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/quiz",
+                json=payload,
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Quiz generation failed: {e}")
+            raise
     
-    def get_documents(self) -> Dict:
-        """Get list of uploaded documents."""
-        return self._make_request("GET", "/documents")
+    def get_documents(self) -> Optional[Dict[str, Any]]:
+        """Get document statistics."""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/documents",
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get documents: {e}")
+            return None
     
-    def upload_documents(self, files: List) -> Dict:
-        """Upload documents."""
-        files_dict = {f"files": (f.name, f, f.type) for f in files}
-        return self._make_request("POST", "/documents/upload", files=files_dict)
-    
-    def clear_documents(self) -> Dict:
-        """Clear all documents."""
-        return self._make_request("DELETE", "/documents/clear")
-    
-    def get_health(self) -> Dict:
-        """Check API health."""
-        return self._make_request("GET", "/health")
-    
-    def generate_quiz(self, num_questions: int = 5) -> Dict:
-        """Generate suggested questions."""
-        return self._make_request(
-            "POST",
-            "/quiz",
-            params={"num_questions": num_questions}
-        )
-    
-    def get_settings(self) -> Dict:
-        """Get current settings."""
-        return self._make_request("GET", "/settings")
-    
-    def update_settings(self, settings: Dict) -> Dict:
-        """Update settings."""
-        return self._make_request("PUT", "/settings", json_data=settings)
-    
-    def reset_settings(self) -> Dict:
-        """Reset settings to defaults."""
-        return self._make_request("POST", "/settings/reset")
+    def clear_data(self) -> bool:
+        """Clear all data from backend."""
+        try:
+            response = self.session.delete(
+                f"{self.base_url}/clear",
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Clear data failed: {e}")
+            return False
+
+
+class APIError(Exception):
+    """Custom exception for API errors."""
+    pass
+
+
+class ConnectionError(APIError):
+    """Raised when connection to backend fails."""
+    pass
+
+
+class ValidationError(APIError):
+    """Raised when input validation fails."""
+    pass
 
 
 @st.cache_resource
-def get_api_client() -> APIClient:
+def get_api_client(base_url: str, timeout: int = 30) -> APIClient:
     """Get cached API client instance."""
-    return APIClient()
+    return APIClient(base_url, timeout=timeout)
