@@ -74,10 +74,17 @@ def get_questions_from_vectorstore(num_questions: int = 5) -> List[str]:
             return []
         
         # Generate quiz
+        slice_count = min(20, len(vector_store.chunks))
+        chunk_sample = vector_store.chunks[:slice_count]
+        metadata_sample = vector_store.metadata[:slice_count] if vector_store.metadata else None
+
         quiz_data = generate_quiz_from_chunks(
             llm_engine,
-            vector_store.chunks[:20],  # Use first 20 chunks
-            num_questions=num_questions
+            chunk_sample,
+            metadata=metadata_sample,
+            num_questions=num_questions,
+            max_questions_single=settings.MAX_SUGGESTED_QUESTIONS_SINGLE,
+            max_questions_multi=settings.MAX_SUGGESTED_QUESTIONS_MULTI,
         )
         
         # Extract questions

@@ -70,6 +70,9 @@ backend/data/embeddings/
 *.index
 *.faiss
 
+# Documentation outputs
+docs/
+
 # Uploaded documents
 data/documents/
 backend/data/documents/

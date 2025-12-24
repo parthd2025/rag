@@ -13,7 +13,13 @@ from logger_config import logger
 class DocumentIngestor:
     """Handle document extraction and chunking with proper error handling."""
     
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, enable_ocr: bool = False):
+    def __init__(
+        self,
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200,
+        enable_ocr: bool = False,
+        chunking_level: Optional[int] = None
+    ):
         """
         Initialize document ingestor.
         
@@ -32,9 +38,44 @@ class DocumentIngestor:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.enable_ocr = enable_ocr
+        self.chunking_level: Optional[int] = None
         # Store stats about the last chunking operation so the API/UI can report patterns used
         self.last_chunk_stats: dict = {}
         logger.info(f"DocumentIngestor initialized: chunk_size={chunk_size}, overlap={chunk_overlap}, ocr={enable_ocr}")
+        if chunking_level is not None:
+            self.set_chunking_level(chunking_level)
+
+    def set_chunking_level(self, level: int) -> None:
+        """Update chunk size and overlap according to a 1-10 level scale."""
+        level = max(1, min(10, int(level)))
+
+        # Map slider level to practical chunk parameters
+        min_chunk = 350
+        max_chunk = 2000
+        min_overlap = 40
+        max_overlap = 400
+
+        ratio = 0.0 if level == 1 else (level - 1) / 9
+        computed_chunk = int(min_chunk + ratio * (max_chunk - min_chunk))
+        computed_overlap = int(min_overlap + ratio * (max_overlap - min_overlap))
+
+        # Ensure chunk overlap never exceeds chunk size minus a buffer
+        max_allowed_overlap = max(0, computed_chunk - 100)
+        computed_overlap = min(computed_overlap, max_allowed_overlap)
+
+        if computed_overlap <= 0:
+            computed_overlap = min_overlap
+
+        self.chunking_level = level
+        self.chunk_size = max(min_chunk, computed_chunk)
+        self.chunk_overlap = max(0, min(computed_overlap, self.chunk_size - 1))
+
+        logger.info(
+            "Chunking level set to %s (chunk_size=%s, chunk_overlap=%s)",
+            self.chunking_level,
+            self.chunk_size,
+            self.chunk_overlap
+        )
     
     def load_and_process_documents(self, file_paths: List[str]) -> Tuple[List[str], str]:
         """
@@ -496,6 +537,9 @@ class DocumentIngestor:
             "code_chunks": 0,
             "heading_chunks": 0,
             "list_chunks": 0,
+            "chunking_level": self.chunking_level,
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
         }
 
         # Step 1: Validate input

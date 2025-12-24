@@ -90,7 +90,7 @@ def init_components() -> None:
         chat_service = ChatService(rag_engine)
         document_service = DocumentService(vectorstore, ingestor)
         quiz_service = QuizService(rag_engine)
-        settings_service = SettingsService(settings)
+        settings_service = SettingsService(settings, ingestor=ingestor, rag_engine=rag_engine)
         logger.info(f"✓ All services initialized")
         
         logger.info("=== RAG system initialization complete ===")

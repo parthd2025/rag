@@ -35,10 +35,12 @@ class Settings(BaseSettings):
     TOP_K: int = Field(8, env="TOP_K")
     TEMPERATURE: float = Field(0.7, env="TEMPERATURE")
     MAX_TOKENS: int = Field(512, env="MAX_TOKENS")
+    CONTEXT_WINDOW_SIZE: int = Field(2048, env="CONTEXT_WINDOW_SIZE")
     
     # Chunking Configuration
     CHUNK_SIZE: int = Field(1000, env="CHUNK_SIZE")
     CHUNK_OVERLAP: int = Field(200, env="CHUNK_OVERLAP")
+    CHUNKING_LEVEL: int = Field(5, env="CHUNKING_LEVEL")
     
     # File Upload Configuration
     MAX_FILE_SIZE: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB default
@@ -70,6 +72,8 @@ class Settings(BaseSettings):
     LOG_FILE: str = Field("logs/rag_system.log", env="LOG_FILE")
     LOG_MAX_BYTES: int = Field(10 * 1024 * 1024, env="LOG_MAX_BYTES")  # 10MB
     LOG_BACKUP_COUNT: int = Field(5, env="LOG_BACKUP_COUNT")
+    MAX_SUGGESTED_QUESTIONS_SINGLE: int = Field(10, env="MAX_SUGGESTED_QUESTIONS_SINGLE")
+    MAX_SUGGESTED_QUESTIONS_MULTI: int = Field(20, env="MAX_SUGGESTED_QUESTIONS_MULTI")
     
     @validator("ALLOWED_EXTENSIONS", pre=True)
     def parse_extensions(cls, v):
@@ -88,6 +92,33 @@ class Settings(BaseSettings):
         if isinstance(v, (list, set, tuple)):
             return [str(origin).strip() for origin in v if str(origin).strip()]
         return v
+
+    @validator("CHUNKING_LEVEL", pre=True, always=True)
+    def clamp_chunking_level(cls, v):
+        """Ensure chunking level stays within 1-10."""
+        try:
+            level = int(v)
+        except (TypeError, ValueError):
+            return 5
+        return max(1, min(10, level))
+
+    @validator("CONTEXT_WINDOW_SIZE", pre=True, always=True)
+    def clamp_context_window(cls, v):
+        """Ensure context window size remains in a sane range."""
+        try:
+            size = int(v)
+        except (TypeError, ValueError):
+            return 2048
+        return max(256, min(size, 8192))
+
+    @validator("MAX_SUGGESTED_QUESTIONS_SINGLE", "MAX_SUGGESTED_QUESTIONS_MULTI", pre=True, always=True)
+    def clamp_question_counts(cls, v):
+        """Ensure suggested question counts are positive."""
+        try:
+            count = int(v)
+        except (TypeError, ValueError):
+            return 10
+        return max(1, min(count, 50))
     
     @property
     def allowed_extensions_set(self) -> Set[str]:

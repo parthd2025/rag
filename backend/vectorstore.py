@@ -122,12 +122,20 @@ class FAISSVectorStore:
     def add_chunks(self, chunks: List[str], document_name: str = "unknown") -> None:
         """
         Add chunks with embeddings to index with comprehensive logging.
+        Removes existing chunks from the same document first to avoid duplicates.
         
         Args:
             chunks: List of text chunks to add
             document_name: Name of the source document
         """
         logger.info(f"=== Starting add_chunks flow for document: {document_name} ===")
+        
+        # Step 0: Remove existing chunks from this document (avoid duplicates)
+        existing_count = sum(1 for m in self.metadata if m.get("source_doc") == document_name)
+        if existing_count > 0:
+            logger.info(f"ADD_CHUNKS STEP 0: Removing {existing_count} existing chunks from '{document_name}'")
+            self.delete_document(document_name)
+            logger.info(f"ADD_CHUNKS STEP 0 COMPLETE: Cleared previous version of document")
         
         # Step 1: Validate chunks
         if not chunks:
@@ -162,12 +170,30 @@ class FAISSVectorStore:
             start_index = len(self.chunks)
             self.chunks.extend(chunks)
             
-            # Store metadata for each chunk with source document
+            # Store enhanced metadata for each chunk with source document and page info
+            import re
+            from datetime import datetime
+            
             for chunk_index, chunk in enumerate(chunks):
+                # Extract page number from chunk if available (from PDF markers)
+                page_match = re.search(r'\[PAGE (\d+)\]', chunk)
+                page_num = int(page_match.group(1)) if page_match else None
+                
+                # Extract first heading/section if available
+                heading_match = re.search(r'^#+\s*(.+?)$|^([A-Z][A-Za-z\s]+:)', chunk, re.MULTILINE)
+                section = heading_match.group(1) or heading_match.group(2) if heading_match else None
+                
+                # Get preview (first 100 chars without page markers)
+                preview_text = re.sub(r'\[PAGE \d+\]', '', chunk).strip()[:100]
+                
                 chunk_metadata = {
                     "source_doc": document_name,
                     "chunk_index": start_index + chunk_index,
-                    "chunk_length": len(chunk)
+                    "chunk_length": len(chunk),
+                    "page": page_num,
+                    "section": section.strip() if section else None,
+                    "preview": preview_text,
+                    "timestamp": datetime.now().isoformat()
                 }
                 self.metadata.append(chunk_metadata)
             
@@ -267,6 +293,67 @@ class FAISSVectorStore:
             logger.info(f"=== Clear flow COMPLETE: Removed {old_count} chunk(s) ===")
         except Exception as e:
             logger.error(f"CLEAR FAILED: Error clearing vector store: {e}", exc_info=True)
+            raise
+    
+    def delete_document(self, document_name: str) -> int:
+        """
+        Delete all chunks from a specific document.
+        
+        Args:
+            document_name: Name of the document to delete
+            
+        Returns:
+            Number of chunks deleted
+        """
+        logger.info(f"=== Starting delete_document flow for: {document_name} ===")
+        
+        try:
+            # Find indices of chunks to keep
+            indices_to_keep = []
+            indices_to_delete = []
+            
+            for i, meta in enumerate(self.metadata):
+                if meta.get("source_doc") == document_name:
+                    indices_to_delete.append(i)
+                else:
+                    indices_to_keep.append(i)
+            
+            if not indices_to_delete:
+                logger.info(f"DELETE_DOC: No chunks found for document '{document_name}'")
+                return 0
+            
+            deleted_count = len(indices_to_delete)
+            logger.info(f"DELETE_DOC: Found {deleted_count} chunks to delete")
+            
+            # Filter chunks and metadata
+            new_chunks = [self.chunks[i] for i in indices_to_keep]
+            new_metadata = [self.metadata[i] for i in indices_to_keep]
+            
+            # Rebuild index with remaining chunks
+            logger.info(f"DELETE_DOC: Rebuilding index with {len(new_chunks)} remaining chunks")
+            self.index = faiss.IndexFlatIP(self.embedding_dim)
+            self.chunks = []
+            self.metadata = []
+            
+            if new_chunks:
+                # Re-add remaining chunks
+                embeddings = self.embedding_model.encode(
+                    new_chunks,
+                    convert_to_numpy=True,
+                    show_progress_bar=False,
+                    batch_size=32
+                )
+                embeddings = np.array(embeddings, dtype=np.float32)
+                self.index.add(embeddings)
+                self.chunks = new_chunks
+                self.metadata = new_metadata
+            
+            self._save_index()
+            logger.info(f"=== delete_document COMPLETE: Removed {deleted_count} chunks ===")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"DELETE_DOC FAILED: Error deleting document: {e}", exc_info=True)
             raise
     
     def _save_index(self) -> None:

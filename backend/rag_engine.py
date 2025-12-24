@@ -15,7 +15,8 @@ class RAGEngine:
         vector_store,
         llm_engine,
         top_k: int = 8,
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        context_window_size: Optional[int] = None
     ):
         """
         Initialize RAG engine.
@@ -25,6 +26,7 @@ class RAGEngine:
             llm_engine: LLM engine instance for generation
             top_k: Number of chunks to retrieve
             temperature: LLM temperature parameter
+            context_window_size: Maximum characters allowed in aggregated context
         """
         if top_k <= 0:
             raise ValueError("top_k must be positive")
@@ -36,8 +38,69 @@ class RAGEngine:
         self.top_k = top_k
         self.temperature = temperature
         self.min_similarity_threshold = 0.3
+        self.context_window_size = context_window_size or settings.CONTEXT_WINDOW_SIZE
         
         logger.info(f"RAGEngine initialized: top_k={top_k}, temperature={temperature}")
+
+    def _format_source_entry(
+        self,
+        index: int,
+        chunk: str,
+        similarity: float,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Normalize chunk metadata for downstream consumers."""
+        metadata = metadata or {}
+        document = metadata.get("document") or metadata.get("source_doc") or "Unknown"
+        preview = metadata.get("chunk_preview") or metadata.get("preview")
+        if not preview:
+            preview = chunk[:200].strip()
+        if preview and len(preview) < len(chunk) and not preview.endswith("..."):
+            preview = preview.rstrip() + "..."
+
+        return {
+            "index": index,
+            "document": document,
+            "source_doc": document,
+            "chunk": chunk,
+            "content": chunk,
+            "chunk_preview": preview,
+            "similarity": round(similarity, 4),
+            "relevance_score": similarity,
+            "chunk_length": len(chunk),
+            "chunk_index": metadata.get("chunk_index"),
+            "page": metadata.get("page"),
+            "section": metadata.get("section"),
+            "timestamp": metadata.get("timestamp"),
+        }
+
+    def retrieve_context(self, question: str, top_k: Optional[int] = None) -> Dict[str, Any]:
+        """Return top matching chunks with normalized metadata."""
+        if not question or not question.strip():
+            raise ValueError("question must be a non-empty string")
+
+        k = top_k or self.top_k
+        if k <= 0:
+            raise ValueError("top_k must be positive")
+
+        logger.info(f"Retrieving context: question_len={len(question)}, top_k={k}")
+        results = self.vector_store.search(question, top_k=k)
+        if not results:
+            logger.info("No context retrieved")
+            return {"chunks": [], "metadata": [], "confidence": 0.0}
+
+        formatted_sources = [
+            self._format_source_entry(i, chunk, similarity, metadata)
+            for i, (chunk, similarity, metadata) in enumerate(results, 1)
+        ]
+
+        avg_similarity = sum(item["relevance_score"] for item in formatted_sources) / len(formatted_sources)
+
+        return {
+            "chunks": [chunk for chunk, _, _ in results],
+            "metadata": formatted_sources,
+            "confidence": avg_similarity,
+        }
     
     def answer_query(self, question: str) -> str:
         """
@@ -65,6 +128,12 @@ class RAGEngine:
                 return "No documents found. Please upload documents first."
             
             context = "\n\n".join([f"[Document]\n{chunk}" for chunk, _ in results])
+            context, truncated = self._truncate_context(context)
+            if truncated:
+                logger.debug(
+                    "Context truncated to %s characters for simple answer flow",
+                    self.context_window_size
+                )
             prompt = self._build_prompt(question, context)
             
             logger.debug(f"Generating answer for query: {question[:100]}...")
@@ -166,18 +235,19 @@ class RAGEngine:
             context_parts = []
             sources = []
             
+            truncated = False
+
             for i, (chunk, similarity, metadata) in enumerate(results, 1):
                 context_parts.append(f"[Document {i}]\n{chunk}")
-                sources.append({
-                    "index": i,
-                    "chunk": chunk[:500] + "..." if len(chunk) > 500 else chunk,
-                    "similarity": round(similarity, 4),
-                    "chunk_length": len(chunk),
-                    "source_doc": metadata.get("source_doc", "unknown"),
-                    "chunk_index": metadata.get("chunk_index", -1)
-                })
+                sources.append(self._format_source_entry(i, chunk, similarity, metadata))
             
             context = "\n\n".join(context_parts)
+            context, truncated = self._truncate_context(context)
+            if truncated:
+                logger.info(
+                    "RAG STEP 4 NOTE: Context truncated to %s characters per context window",
+                    self.context_window_size
+                )
             logger.info(f"RAG STEP 4 COMPLETE: Context built ({len(context)} chars, {len(sources)} sources with metadata)")
         except Exception as e:
             logger.error(f"RAG STEP 4 FAILED: Error building context: {e}", exc_info=True)
@@ -293,6 +363,35 @@ Please provide your answer:"""
         self.temperature = temp
         logger.debug(f"Set temperature to {temp}")
     
+    def set_context_window_size(self, size: int) -> None:
+        """Update the context window limit."""
+        if size <= 0:
+            raise ValueError("context_window_size must be positive")
+        self.context_window_size = size
+        logger.debug(f"Set context_window_size to {size}")
+
+    def _truncate_context(self, context: str) -> Tuple[str, bool]:
+        """Trim context to configured window, preserving document boundaries when possible."""
+        if not self.context_window_size or self.context_window_size <= 0:
+            return context, False
+        if len(context) <= self.context_window_size:
+            return context, False
+
+        indicator = "\n\n[Context truncated]"
+        limit = max(0, self.context_window_size - len(indicator))
+        if limit <= 0:
+            return indicator[: self.context_window_size], True
+
+        trunc_point = context.rfind("\n\n", 0, limit)
+        if trunc_point == -1:
+            trunc_point = limit
+
+        trimmed = context[:trunc_point].rstrip()
+        if len(trimmed) + len(indicator) > self.context_window_size:
+            trimmed = trimmed[: self.context_window_size - len(indicator)]
+
+        return f"{trimmed}{indicator}", True
+
     def get_documents_by_source(self) -> Dict[str, int]:
         """
         Get list of all source documents and chunk counts for backtracking.
@@ -345,6 +444,7 @@ Please provide your answer:"""
             "llm_ready": self.llm_engine.is_ready() if self.llm_engine else False,
             "top_k": self.top_k,
             "temperature": self.temperature,
+            "context_window_size": self.context_window_size,
             "vector_store_chunks": len(self.vector_store.chunks) if self.vector_store else 0,
             "source_documents": self.get_documents_by_source()
         }

@@ -6,7 +6,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uvicorn
 
 from config import settings
@@ -47,6 +47,14 @@ class QuizResponse(BaseModel):
     questions: List[dict]
 
 
+class SettingsUpdateRequest(BaseModel):
+    """Request payload for updating runtime settings."""
+    chunking_level: Optional[int] = Field(None, ge=1, le=10, description="Chunking profile level")
+    context_window_size: Optional[int] = Field(None, ge=256, le=8192, description="Max context window length")
+    max_questions_single: Optional[int] = Field(None, ge=1, le=50, description="Suggested questions for single document")
+    max_questions_multi: Optional[int] = Field(None, ge=1, le=50, description="Suggested questions for multiple documents")
+
+
 # FastAPI app
 app = FastAPI(
     title="RAG Chatbot API",
@@ -63,7 +71,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -73,10 +81,17 @@ llm_engine = None
 rag_engine: Optional[RAGEngine] = None
 ingestor: Optional[DocumentIngestor] = None
 
+runtime_settings: Dict[str, Any] = {
+    "chunking_level": settings.CHUNKING_LEVEL,
+    "context_window_size": settings.CONTEXT_WINDOW_SIZE,
+    "max_questions_single": settings.MAX_SUGGESTED_QUESTIONS_SINGLE,
+    "max_questions_multi": settings.MAX_SUGGESTED_QUESTIONS_MULTI,
+}
+
 
 def init_components() -> None:
     """Initialize all components with proper error handling and comprehensive logging."""
-    global vector_store, llm_engine, rag_engine, ingestor
+    global vector_store, llm_engine, rag_engine, ingestor, runtime_settings
     
     logger.info("=== Starting RAG system initialization flow ===")
     
@@ -86,9 +101,17 @@ def init_components() -> None:
         ingestor = DocumentIngestor(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
-            enable_ocr=settings.ENABLE_OCR
+            enable_ocr=settings.ENABLE_OCR,
+            chunking_level=settings.CHUNKING_LEVEL
         )
-        logger.info(f"INIT STEP 1 COMPLETE: Document ingestor initialized (chunk_size={settings.CHUNK_SIZE}, overlap={settings.CHUNK_OVERLAP}, ocr={settings.ENABLE_OCR})")
+        logger.info(
+            "INIT STEP 1 COMPLETE: Document ingestor initialized (chunk_size=%s, overlap=%s, chunking_level=%s, ocr=%s)",
+            ingestor.chunk_size,
+            ingestor.chunk_overlap,
+            ingestor.chunking_level,
+            settings.ENABLE_OCR
+        )
+        runtime_settings["chunking_level"] = ingestor.chunking_level
         
         # Step 2: Initialize vector store
         logger.info(f"INIT STEP 2: Initializing vector store (model={settings.EMBEDDING_MODEL})")
@@ -113,7 +136,8 @@ def init_components() -> None:
             vector_store=vector_store,
             llm_engine=llm_engine,
             top_k=settings.TOP_K,
-            temperature=settings.TEMPERATURE
+            temperature=settings.TEMPERATURE,
+            context_window_size=runtime_settings["context_window_size"]
         )
         logger.info("INIT STEP 4 COMPLETE: RAG engine initialized")
         
@@ -188,7 +212,13 @@ async def get_config() -> dict:
             "chunk_overlap": settings.CHUNK_OVERLAP,
             "temperature": settings.TEMPERATURE,
             "max_tokens": settings.MAX_TOKENS,
-            "top_k": settings.TOP_K
+            "top_k": settings.TOP_K,
+            "chunking_level": runtime_settings["chunking_level"],
+            "context_window_size": runtime_settings["context_window_size"],
+            "max_questions_single": runtime_settings["max_questions_single"],
+            "max_questions_multi": runtime_settings["max_questions_multi"],
+            "active_chunk_size": ingestor.chunk_size if ingestor else settings.CHUNK_SIZE,
+            "active_chunk_overlap": ingestor.chunk_overlap if ingestor else settings.CHUNK_OVERLAP,
         }
     except Exception as e:
         logger.error(f"Config retrieval failed: {e}", exc_info=True)
@@ -196,6 +226,46 @@ async def get_config() -> dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve configuration"
         )
+
+
+@app.put("/settings")
+async def update_settings(req: SettingsUpdateRequest) -> dict:
+    """Update runtime settings such as chunking level or context window size."""
+    global runtime_settings
+
+    updates = req.dict(exclude_unset=True)
+    if not updates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No settings provided"
+        )
+
+    try:
+        if "chunking_level" in updates:
+            runtime_settings["chunking_level"] = updates["chunking_level"]
+            if ingestor:
+                ingestor.set_chunking_level(updates["chunking_level"])
+
+        if "context_window_size" in updates:
+            runtime_settings["context_window_size"] = updates["context_window_size"]
+            if rag_engine and hasattr(rag_engine, "set_context_window_size"):
+                rag_engine.set_context_window_size(updates["context_window_size"])
+
+        if "max_questions_single" in updates:
+            runtime_settings["max_questions_single"] = updates["max_questions_single"]
+
+        if "max_questions_multi" in updates:
+            runtime_settings["max_questions_multi"] = updates["max_questions_multi"]
+
+        return {
+            "settings": {
+                **runtime_settings,
+                "active_chunk_size": ingestor.chunk_size if ingestor else settings.CHUNK_SIZE,
+                "active_chunk_overlap": ingestor.chunk_overlap if ingestor else settings.CHUNK_OVERLAP,
+            }
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @app.post("/upload")
@@ -311,6 +381,9 @@ async def upload(files: List[UploadFile] = File(...)) -> dict:
                     "status": "ok",
                     "patterns": patterns,
                     "chunking": chunking_desc,
+                    "chunking_level": ingestor.chunking_level if ingestor else runtime_settings["chunking_level"],
+                    "chunk_size": ingestor.chunk_size if ingestor else settings.CHUNK_SIZE,
+                    "chunk_overlap": ingestor.chunk_overlap if ingestor else settings.CHUNK_OVERLAP,
                 })
                 success_count += 1
             else:
@@ -337,7 +410,13 @@ async def upload(files: List[UploadFile] = File(...)) -> dict:
     # Step 4: Finalize
     total_chunks = len(vector_store.chunks) if vector_store else 0
     logger.info(f"=== Upload endpoint flow COMPLETE: {success_count} succeeded, {error_count} failed, {total_chunks} total chunks ===")
-    return {"results": results, "total_chunks": total_chunks}
+    return {
+        "results": results,
+        "total_chunks": total_chunks,
+        "chunking_level": ingestor.chunking_level if ingestor else runtime_settings["chunking_level"],
+        "chunk_size": ingestor.chunk_size if ingestor else settings.CHUNK_SIZE,
+        "chunk_overlap": ingestor.chunk_overlap if ingestor else settings.CHUNK_OVERLAP,
+    }
 
 
 @app.post("/chat", response_model=QueryResponse)
@@ -421,28 +500,62 @@ async def generate_quiz(req: QuizRequest) -> QuizResponse:
         )
 
     try:
-        # Select diverse chunks for better quiz generation
         all_chunks = vector_store.chunks
-        
-        # Use a mix of chunks from different parts of the document
-        # This provides better variety for quiz question generation
-        if len(all_chunks) > 50:
-            # Use chunks from start, middle, and end for diversity
-            step = len(all_chunks) // 50
-            context_chunks = all_chunks[::step][:50]
-        else:
-            context_chunks = all_chunks
+        all_metadata = vector_store.metadata if getattr(vector_store, "metadata", None) else []
 
-        logger.info(f"QUIZ: Using {len(context_chunks)} chunks from {len(all_chunks)} total chunks for context")
+        paired = list(zip(all_chunks, all_metadata)) if all_metadata else [(chunk, None) for chunk in all_chunks]
+
+        if len(paired) > 50:
+            step = max(1, len(paired) // 50)
+            sampled = paired[::step][:50]
+        else:
+            sampled = paired
+
+        context_chunks = [chunk for chunk, _ in sampled]
+        context_metadata = [meta for _, meta in sampled]
+
+        doc_names = {
+            (meta.get("source_doc") if meta else None) or "Document"
+            for meta in context_metadata
+        }
+        doc_count = max(1, len(doc_names))
+
+        requested_questions = req.num_questions or 5
+        limit = runtime_settings["max_questions_multi"] if doc_count > 1 else runtime_settings["max_questions_single"]
+        question_target = min(requested_questions, limit)
+
+        logger.info(
+            "QUIZ: Using %s chunks from %s total chunks (doc_count=%s, requested=%s, target=%s)",
+            len(context_chunks),
+            len(all_chunks),
+            doc_count,
+            requested_questions,
+            question_target,
+        )
 
         result = generate_quiz_from_chunks(
             llm_engine=llm_engine,
             chunks=context_chunks,
-            num_questions=req.num_questions or 5,
+            metadata=context_metadata,
+            num_questions=question_target,
+            max_questions_single=runtime_settings["max_questions_single"],
+            max_questions_multi=runtime_settings["max_questions_multi"],
         )
 
         questions = result.get("questions", [])
-        logger.info(f"QUIZ COMPLETE: Generated {len(questions)} question(s)")
+        if not questions:
+            logger.warning("QUIZ STEP 3 FAILED: No questions generated")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No quiz questions generated"
+            )
+
+        logger.info(
+            "QUIZ STEP 3 COMPLETE: Generated %s question(s) for %s documents",
+            len(questions),
+            result.get("document_count", doc_count),
+        )
+
         return QuizResponse(questions=questions)
     except HTTPException:
         raise

@@ -3,12 +3,16 @@ Suggested questions generation utilities for RAG chatbot.
 Implements hybrid approach: comparative questions + document-specific questions.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Set
 
 from logger_config import logger
 
 
-def build_comparative_questions_prompt(context_chunks: List[str], num_documents: int = 2) -> str:
+def build_comparative_questions_prompt(
+    context_chunks: List[str],
+    num_documents: int = 2,
+    target_questions: int = 4
+) -> str:
     """
     Build a prompt for generating comparative questions across multiple documents.
 
@@ -23,7 +27,7 @@ def build_comparative_questions_prompt(context_chunks: List[str], num_documents:
 
     prompt = f"""You are an expert at creating insightful comparative questions for multi-document analysis.
 
-Your task: Create 3-4 comparative questions that help users understand relationships and differences across the {num_documents} provided documents.
+Your task: Create up to {target_questions} comparative questions that help users understand relationships and differences across the {num_documents} provided documents.
 
 Context from documents:
 {joined_context}
@@ -45,7 +49,7 @@ Return ONLY valid JSON (no additional text):
 }}
 
 Requirements:
-- Provide 3-4 questions only
+- Provide no more than {target_questions} questions (fewer is acceptable if context is limited)
 - Questions should be open-ended (no multiple choice options)
 - Ensure valid JSON format
 """
@@ -99,6 +103,7 @@ def generate_comparative_questions(
     llm_engine,
     chunks: List[str],
     num_documents: int = 2,
+    max_questions: int = 4,
 ) -> List[str]:
     """
     Generate comparative questions across multiple documents.
@@ -116,7 +121,7 @@ def generate_comparative_questions(
     if not chunks:
         return []
 
-    prompt = build_comparative_questions_prompt(chunks, num_documents)
+    prompt = build_comparative_questions_prompt(chunks, num_documents, target_questions=max_questions)
 
     try:
         logger.info(f"QUESTIONS: Generating comparative questions from {num_documents} documents")
@@ -131,7 +136,8 @@ def generate_comparative_questions(
 
         data = json.loads(raw_json)
         questions = data.get("comparative_questions", [])
-        return [q.strip() for q in questions if q.strip()]
+        trimmed = [q.strip() for q in questions if q.strip()]
+        return trimmed[:max_questions]
     except Exception as e:
         logger.error(f"QUESTIONS: Failed to generate comparative questions: {e}")
         return []
@@ -218,44 +224,142 @@ def generate_suggested_questions_hybrid(
 def generate_quiz_from_chunks(
     llm_engine,
     chunks: List[str],
+    metadata: Optional[List[dict]] = None,
     num_questions: int = 5,
+    max_questions_single: int = 10,
+    max_questions_multi: int = 20,
 ) -> Dict[str, Any]:
-    """
-    Backward-compatible wrapper for generating suggested questions.
-    Generates comparative questions from provided chunks.
-
-    Args:
-        llm_engine: LLM engine instance
-        chunks: Chunks to generate questions from
-        num_questions: Number of questions (used for count estimation)
-
-    Returns:
-        Dict with questions list for backward compatibility
-    """
+    """Generate suggested questions, balancing comparative and document-specific prompts."""
     if not chunks:
-        return {"questions": []}
+        return {
+            "questions": [],
+            "comparative_questions": [],
+            "document_questions": {},
+            "requested": num_questions,
+            "limit": 0,
+            "document_count": 0,
+        }
 
     try:
-        logger.info(f"QUIZ: Generating {num_questions} suggested questions from {len(chunks)} chunks")
-        
-        # Generate comparative questions
-        comparative = generate_comparative_questions(llm_engine, chunks, num_documents=1)
-        
-        # Convert list of strings to list of dicts for frontend
-        question_dicts = []
-        for idx, q in enumerate(comparative, 1):
-            question_dicts.append({
-                "question": q,
-                "type": "comparative"
-            })
-        
-        # Return in format expected by frontend
+        logger.info(
+            "QUIZ: Generating %s suggested questions from %s chunks",
+            num_questions,
+            len(chunks)
+        )
+
+        # Align metadata with chunks when provided
+        doc_chunks: Dict[str, List[str]] = {}
+        if metadata and len(metadata) == len(chunks):
+            for chunk, meta in zip(chunks, metadata):
+                doc_name = "Document"
+                if meta:
+                    doc_name = meta.get("source_doc") or meta.get("document") or "Document"
+                doc_chunks.setdefault(doc_name, []).append(chunk)
+        else:
+            doc_chunks = {"Document": chunks}
+
+        document_count = max(1, len(doc_chunks))
+        question_limit = max(
+            1,
+            min(
+                int(num_questions or 1),
+                max_questions_multi if document_count > 1 else max_questions_single,
+            ),
+        )
+
+        questions: List[Dict[str, Any]] = []
+        comparative: List[str] = []
+        document_questions: Dict[str, List[str]] = {}
+        used_text: Set[str] = set()
+
+        # Comparative set for multi-document scenario
+        if document_count > 1:
+            comparative_target = min(4, question_limit)
+            comparative = generate_comparative_questions(
+                llm_engine,
+                chunks,
+                num_documents=document_count,
+                max_questions=comparative_target,
+            )
+            for question in comparative:
+                if question and question not in used_text and len(questions) < question_limit:
+                    questions.append({
+                        "question": question,
+                        "type": "comparative"
+                    })
+                    used_text.add(question)
+
+        # Document-specific questions
+        remaining = question_limit - len(questions)
+        if remaining > 0:
+            doc_names = list(doc_chunks.keys())
+
+            if document_count == 1:
+                doc_name = doc_names[0]
+                desired = remaining
+                generated = generate_document_specific_questions(
+                    llm_engine,
+                    doc_chunks[doc_name],
+                    doc_name,
+                    num_questions=desired,
+                )
+                document_questions[doc_name] = generated
+                for question in generated:
+                    if question and question not in used_text and len(questions) < question_limit:
+                        questions.append({
+                            "question": question,
+                            "type": "document",
+                            "document": doc_name,
+                        })
+                        used_text.add(question)
+            else:
+                base = remaining // document_count
+                extra = remaining % document_count
+                for idx, doc_name in enumerate(doc_names):
+                    if len(questions) >= question_limit:
+                        break
+
+                    target = base + (1 if idx < extra else 0)
+                    if target <= 0:
+                        target = 1 if len(questions) < question_limit else 0
+                    target = min(target, question_limit - len(questions))
+                    if target <= 0:
+                        continue
+
+                    generated = generate_document_specific_questions(
+                        llm_engine,
+                        doc_chunks[doc_name],
+                        doc_name,
+                        num_questions=target,
+                    )
+                    document_questions[doc_name] = generated
+                    for question in generated:
+                        if question and question not in used_text and len(questions) < question_limit:
+                            questions.append({
+                                "question": question,
+                                "type": "document",
+                                "document": doc_name,
+                            })
+                            used_text.add(question)
+
         return {
-            "questions": question_dicts if question_dicts else [],
-            "raw": ""
+            "questions": questions,
+            "comparative_questions": comparative,
+            "document_questions": document_questions,
+            "requested": num_questions,
+            "limit": question_limit,
+            "document_count": document_count,
         }
-    except Exception as e:
-        logger.error(f"QUIZ: Failed to generate questions: {e}", exc_info=True)
-        return {"questions": [], "raw": ""}
+
+    except Exception as exc:
+        logger.error("QUIZ: Failed to generate questions: %s", exc, exc_info=True)
+        return {
+            "questions": [],
+            "comparative_questions": [],
+            "document_questions": {},
+            "requested": num_questions,
+            "limit": 0,
+            "document_count": 0,
+        }
 
 
