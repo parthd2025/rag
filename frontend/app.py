@@ -165,12 +165,12 @@ def clear_data() -> None:
 
 
 # Config
-# Theme CSS (AI palette)
+# Theme CSS (AI-powered palette)
 st.markdown("""
 <style>
     .stApp {
-        background: linear-gradient(135deg, #0F0F23 0%, #1A1A2E 50%, #16213E 100%);
-        color: #FFFFFF;
+        background: linear-gradient(135deg, #F2EEF2 0%, #E0DDDC 30%, #B0B7C1 100%);
+        color: #100C0A;
     }
 
     .main .block-container {
@@ -180,145 +180,169 @@ st.markdown("""
 
     [data-testid="stSidebar"] { display: none; }
 
-    h1, h2, h3, h4 { color: #FFFFFF !important; font-weight: 700; }
-    p, span, label { color: #B8B8CC !important; }
-    h1 { background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    h1, h2, h3, h4 { color: #000000 !important; font-weight: 700; }
+    p, span, label { color: #000000 !important; }
+    h1 { background: linear-gradient(135deg, #000000 0%, #333333 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
     .status-card {
-        background: rgba(255,255,255,0.1);
+        background: rgba(240, 238, 242, 0.9);
         backdrop-filter: blur(20px);
-        border: 1px solid rgba(255,255,255,0.2);
+        border: 1px solid rgba(150, 126, 113, 0.3);
         border-radius: 16px;
         padding: 20px;
         text-align: center;
-        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        box-shadow: 0 8px 32px rgba(66, 54, 48, 0.1);
     }
-    .status-label { color: #B8B8CC !important; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .status-value { color: #FFFFFF !important; font-size: 28px; font-weight: 700; }
-    .status-online { color: #4ECDC4 !important; }
+    .status-label { color: #000000 !important; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .status-value { color: #000000 !important; font-size: 28px; font-weight: 700; }
+    .status-online { color: #000000 !important; }
 
     .upload-zone {
-        background: rgba(255,255,255,0.05);
-        border: 2px dashed rgba(103,126,234,0.4);
+        background: #ffffff;
+        border: 2px dashed rgba(150, 126, 113, 0.5);
         border-radius: 16px;
         padding: 30px;
         text-align: center;
         margin: 10px 0;
         transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
-    .upload-zone:hover { border-color: #667EEA; background: rgba(103,126,234,0.1); transform: translateY(-2px); }
+    .upload-zone:hover { border-color: #967E71; background: rgba(150, 126, 113, 0.1); transform: translateY(-2px); color: #000000 !important; }
 
     .stButton > button {
-        background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
-        color: #FFFFFF !important;
+        background: linear-gradient(135deg, #967E71 0%, #423630 100%);
+        color: #F2EEF2 !important;
         border: none;
         border-radius: 12px;
         padding: 12px 24px;
         font-weight: 600;
         width: 100%;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(103,126,234,0.4);
+        box-shadow: 0 4px 15px rgba(150, 126, 113, 0.3);
     }
     .stButton > button:hover {
         transform: translateY(-3px);
-        box-shadow: 0 8px 25px rgba(103,126,234,0.6);
-        background: linear-gradient(135deg, #764BA2 0%, #667EEA 100%);
+        box-shadow: 0 8px 25px rgba(150, 126, 113, 0.4);
+        background: linear-gradient(135deg, #423630 0%, #100C0A 100%);
     }
 
     [data-testid="stFileUploader"] {
-        background: rgba(255,255,255,0.05);
-        border: 2px dashed rgba(103,126,234,0.4);
+        background: #ffffff;
+        border: 2px dashed rgba(150, 126, 113, 0.5);
         border-radius: 16px;
         padding: 20px;
-        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
     [data-testid="stFileUploader"]:hover {
-        border-color: #667EEA;
-        background: rgba(103,126,234,0.1);
+        border-color: #967E71;
+        background: rgba(150, 126, 113, 0.15);
+        color: #000000 !important;
     }
 
     .stTextInput > div > div > input {
-        background: rgba(255,255,255,0.1) !important;
-        border: 1px solid rgba(255,255,255,0.2) !important;
+        background: #ffffff !important;
+        border: 1px solid rgba(150, 126, 113, 0.4) !important;
         border-radius: 12px;
-        color: #FFFFFF !important;
+        color: #000000 !important;
         padding: 12px 16px;
-        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .stTextInput > div > div > input::placeholder {
+        color: #666666 !important;
     }
     .stTextInput > div > div > input:focus {
-        border-color: #667EEA !important;
-        box-shadow: 0 0 0 2px rgba(103,126,234,0.3);
-        background: rgba(255,255,255,0.15) !important;
+        border-color: #967E71 !important;
+        box-shadow: 0 0 0 2px rgba(150, 126, 113, 0.3);
+        background: #ffffff !important;
+        color: #000000 !important;
     }
 
-    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 24px !important; font-weight: 700 !important; }
-    [data-testid="stMetricLabel"] { color: #B8B8CC !important; }
+    [data-testid="stMetricValue"] { color: #000000 !important; font-size: 24px !important; font-weight: 700 !important; }
+    [data-testid="stMetricLabel"] { color: #000000 !important; }
 
     .user-msg {
-        background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
-        color: #FFFFFF;
+        background: linear-gradient(135deg, #967E71 0%, #423630 100%);
+        color: #F2EEF2;
         padding: 16px 20px;
         border-radius: 20px 20px 6px 20px;
         margin: 8px 0;
-        box-shadow: 0 4px 15px rgba(103,126,234,0.3);
+        box-shadow: 0 4px 15px rgba(150, 126, 113, 0.3);
     }
     .bot-msg {
-        background: rgba(255,255,255,0.1);
-        color: #FFFFFF;
+        background: #ffffff;
+        color: #000000;
         padding: 16px 20px;
         border-radius: 20px 20px 20px 6px;
         margin: 8px 0;
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(150, 126, 113, 0.2);
     }
 
     .info-box {
-        background: rgba(76,205,196,0.15);
-        border-left: 4px solid #4ECDC4;
+        background: rgba(150, 126, 113, 0.15);
+        border-left: 4px solid #967E71;
         padding: 12px 16px;
         border-radius: 0 12px 12px 0;
-        color: #4ECDC4 !important;
+        color: #000000 !important;
         backdrop-filter: blur(10px);
     }
     .success-box {
-        background: rgba(76,205,196,0.15);
-        border-left: 4px solid #4ECDC4;
+        background: rgba(150, 126, 113, 0.15);
+        border-left: 4px solid #967E71;
         padding: 12px 16px;
         border-radius: 0 12px 12px 0;
-        color: #4ECDC4 !important;
+        color: #000000 !important;
         backdrop-filter: blur(10px);
     }
     .error-box {
-        background: rgba(255,107,107,0.15);
-        border-left: 4px solid #FF6B6B;
+        background: rgba(176, 183, 193, 0.15);
+        border-left: 4px solid #B0B7C1;
         padding: 12px 16px;
         border-radius: 0 12px 12px 0;
-        color: #FF6B6B !important;
+        color: #000000 !important;
         backdrop-filter: blur(10px);
     }
 
-    hr { border-color: rgba(255,255,255,0.2) !important; margin: 20px 0 !important; }
+    .chunking-info {
+        background: rgba(224, 221, 220, 0.3);
+        border: 1px solid rgba(150, 126, 113, 0.3);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin: 4px 0;
+        font-size: 12px;
+        color: #000000 !important;
+    }
+    .file-type {
+        background: rgba(176, 183, 193, 0.3);
+        border-radius: 6px;
+        padding: 2px 8px;
+        font-size: 11px;
+        color: #000000 !important;
+        font-weight: 500;
+        margin-right: 8px;
+    }
+
+    hr { border-color: rgba(150, 126, 113, 0.3) !important; margin: 20px 0 !important; }
 
     .file-item {
-        background: rgba(255,255,255,0.1);
+        background: rgba(240, 238, 242, 0.8);
         border-radius: 12px;
         padding: 12px 16px;
         margin: 8px 0;
         display: flex;
         align-items: center;
-        color: #FFFFFF;
+        color: #000000;
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(150, 126, 113, 0.2);
         transition: all 0.2s ease;
     }
     .file-item:hover {
-        background: rgba(255,255,255,0.15);
+        background: rgba(240, 238, 242, 1);
         transform: translateX(4px);
     }
 
     .section-header {
-        color: #667EEA !important;
+        color: #000000 !important;
         font-size: 20px;
         font-weight: 700;
         margin-bottom: 16px;
@@ -332,14 +356,14 @@ st.markdown("""
         margin: 5px 0;
         border-radius: 0 6px 6px 0;
     }
-    .source-doc { color: #423630 !important; font-weight: 500; }
-    .source-page { color: #967E71 !important; }
-    .source-similarity { color: #423630 !important; }
-    .source-preview { color: #967E71 !important; font-style: italic; font-size: 12px; }
+    .source-doc { color: #000000 !important; font-weight: 500; }
+    .source-page { color: #000000 !important; }
+    .source-similarity { color: #000000 !important; }
+    .source-preview { color: #000000 !important; font-style: italic; font-size: 12px; }
 
     .quiz-question {
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.2);
+        background: rgba(66, 54, 48, 0.9);
+        border: 1px solid rgba(150, 126, 113, 0.3);
         border-radius: 16px;
         padding: 24px;
         margin: 16px 0;
@@ -352,78 +376,79 @@ st.markdown("""
         margin-bottom: 16px;
     }
     .quiz-btn {
-        background: rgba(103,126,234,0.2);
-        border: 1px solid rgba(103,126,234,0.4);
+        background: rgba(66, 54, 48, 0.7);
+        border: 1px solid rgba(150, 126, 113, 0.4);
         border-radius: 12px;
         padding: 12px 16px;
         margin: 6px 0;
-        color: #FFFFFF !important;
+        color: #F2EEF2 !important;
         cursor: pointer;
         transition: all 0.3s ease;
     }
     .quiz-btn:hover { 
-        background: rgba(103,126,234,0.3); 
+        background: rgba(66, 54, 48, 0.9); 
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(103,126,234,0.3);
+        box-shadow: 0 4px 12px rgba(66, 54, 48, 0.3);
+        color: #F2EEF2 !important;
     }
 
     .quiz-answer {
-        background: rgba(76,205,196,0.15);
+        background: rgba(240, 238, 242, 0.9);
         border-radius: 12px;
         padding: 16px 20px;
         margin-top: 12px;
-        color: #FFFFFF;
+        color: #000000 !important;
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(76,205,196,0.2);
+        border: 1px solid rgba(150, 126, 113, 0.2);
     }
 
     [data-testid="stExpander"] {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(240, 238, 242, 0.8);
+        border: 1px solid rgba(150, 126, 113, 0.3);
         border-radius: 12px;
         backdrop-filter: blur(10px);
     }
 
     .stSelectbox > div > div {
-        background: rgba(255,255,255,0.1) !important;
-        border: 1px solid rgba(255,255,255,0.2) !important;
+        background: #ffffff !important;
+        border: 1px solid rgba(150, 126, 113, 0.4) !important;
         border-radius: 12px;
-        color: #FFFFFF !important;
+        color: #000000 !important;
         backdrop-filter: blur(10px);
     }
     .stNumberInput > div > div > input {
-        background: rgba(255,255,255,0.1) !important;
-        border: 1px solid rgba(255,255,255,0.2) !important;
-        color: #FFFFFF !important;
+        background: #ffffff !important;
+        border: 1px solid rgba(150, 126, 113, 0.4) !important;
+        color: #000000 !important;
         border-radius: 12px;
         backdrop-filter: blur(10px);
     }
 
     .stTabs [data-baseweb="tab"] {
-        background: rgba(255,255,255,0.05);
-        color: #B8B8CC;
+        background: rgba(240, 238, 242, 0.8);
+        color: #000000 !important;
         border-radius: 8px 8px 0 0;
         margin-right: 4px;
     }
     .stTabs [data-baseweb="tab"]:hover { 
-        color: #FFFFFF; 
-        background: rgba(255,255,255,0.1);
+        color: #000000 !important; 
+        background: rgba(150, 126, 113, 0.2);
     }
-    .stTabs [data-baseweb="tab"]:focus { color: #FFFFFF; }
+    .stTabs [data-baseweb="tab"]:focus { color: #000000 !important; }
     .stTabs [aria-selected="true"] {
-        border-bottom: 3px solid #667EEA !important;
-        color: #FFFFFF !important;
-        background: rgba(103,126,234,0.1) !important;
+        border-bottom: 3px solid #967E71 !important;
+        color: #000000 !important;
+        background: rgba(150, 126, 113, 0.3) !important;
     }
 
     .stForm {
-        background: rgba(255,255,255,0.05);
+        background: rgba(240, 238, 242, 0.8);
         border-radius: 16px;
         padding: 24px;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(150, 126, 113, 0.3);
         backdrop-filter: blur(20px);
     }
-    .stSlider > div { color: #B8B8CC !important; }
+    .stSlider > div { color: #000000 !important; }
 
     @media (max-width: 1200px) {
         .main .block-container {
@@ -648,7 +673,26 @@ def main():
                         result = upload_files(uploaded_files)
                         for res in result.get("results", []):
                             if res.get("status") == "ok":
-                                st.markdown(f'<div class="success-box">✅ {res.get("filename")} - {res.get("chunks", 0)} chunks</div>', unsafe_allow_html=True)
+                                filename = res.get("filename", "Unknown")
+                                file_ext = filename.split(".")[-1].upper() if "." in filename else "UNKNOWN"
+                                chunks_count = res.get("chunks", 0)
+                                patterns = res.get("patterns", [])
+                                chunking_desc = res.get("chunking", {})
+                                
+                                # Create file type and patterns display
+                                patterns_text = ", ".join([p.title() for p in patterns]) if patterns else "Text-based"
+                                
+                                # Main success message
+                                st.markdown(f'<div class="success-box">✅ {filename} - {chunks_count} chunks</div>', unsafe_allow_html=True)
+                                
+                                # File type and chunking info
+                                st.markdown(f'''
+                                <div class="chunking-info">
+                                    <span class="file-type">{file_ext}</span>
+                                    <strong>Detected Patterns:</strong> {patterns_text}<br/>
+                                    <strong>Chunking Strategy:</strong> {list(chunking_desc.values())[0] if chunking_desc else "Standard text segmentation"}
+                                </div>
+                                ''', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'<div class="error-box">❌ {res.get("filename")}: {res.get("msg", "Error")}</div>', unsafe_allow_html=True)
                     except Exception as e:
