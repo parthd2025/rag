@@ -22,6 +22,3 @@ enableXsrfProtection = true
 [browser]
 gatherUsageStats = false
 serverAddress = "localhost"
-
-[client.toolbarMode]
-toolbarMode = "minimal"
