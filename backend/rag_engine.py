@@ -37,7 +37,7 @@ class RAGEngine:
         self.llm_engine = llm_engine
         self.top_k = top_k
         self.temperature = temperature
-        self.min_similarity_threshold = 0.3
+        self.min_similarity_threshold = 0.4  # Improved threshold for better quality
         self.context_window_size = context_window_size or settings.CONTEXT_WINDOW_SIZE
         
         logger.info(f"RAGEngine initialized: top_k={top_k}, temperature={temperature}")
@@ -320,23 +320,24 @@ class RAGEngine:
             confidence_instruction = "The context is moderately relevant to the question. Try to extract relevant information even if not perfectly matching."
         else:
             confidence_instruction = "The context may have partial relevance. Please provide the best answer possible based on available information, and clarify what information was not found."
-        prompt = f"""You are a helpful assistant that answers questions based on the provided context from documents.
+        prompt = f"""You are an expert document analysis assistant. Your task is to answer questions based on provided document context with high accuracy and clarity.
 
 {confidence_instruction}
 
-Context from documents:
+Document Context:
 {context}
 
-Question: {question}
+User Question: {question}
 
-Instructions:
-1. Answer the question based primarily on the context provided
-2. If the context contains relevant information, use it to formulate your answer
-3. If specific details are missing from the context, acknowledge what is not covered but provide what information is available
-4. Be clear and accurate in your response
-5. If absolutely no relevant information is available in the context, state this clearly
+Critical Instructions:
+1. ONLY answer based on the context provided - do not use external knowledge
+2. If the context directly answers the question, provide a complete and detailed response
+3. If information is partially available, clearly state what you found and what is missing
+4. If no relevant information is found, clearly state "I cannot find information about this question in the provided documents."
+5. Be specific and cite relevant details from the context
+6. Structure your answer clearly with proper reasoning
 
-Please provide your answer:"""
+Answer:"""
         return prompt
     
     def set_top_k(self, top_k: int) -> None:

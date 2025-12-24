@@ -15,7 +15,6 @@ from ingest import DocumentIngestor
 from vectorstore import FAISSVectorStore
 from llm_loader import get_llm_engine
 from rag_engine import RAGEngine
-from quiz import generate_quiz_from_chunks
 
 
 class QueryRequest(BaseModel):
@@ -37,22 +36,24 @@ class QueryResponse(BaseModel):
     sources: Optional[List[dict]] = None
 
 
-class QuizRequest(BaseModel):
-    """Request model for quiz generation."""
-    num_questions: Optional[int] = Field(5, ge=1, le=20, description="Number of quiz questions to generate")
+class SuggestedQuestionsRequest(BaseModel):
+    """Request model for suggested questions generation."""
+    num_questions: Optional[int] = Field(5, ge=1, le=20, description="Number of suggested questions to generate")
 
 
-class QuizResponse(BaseModel):
-    """Response model for quiz generation."""
-    questions: List[dict]
+class SuggestedQuestionsResponse(BaseModel):
+    """Response model for suggested questions."""
+    questions: List[str]
+    document_count: int
 
 
 class SettingsUpdateRequest(BaseModel):
     """Request payload for updating runtime settings."""
     chunking_level: Optional[int] = Field(None, ge=1, le=10, description="Chunking profile level")
     context_window_size: Optional[int] = Field(None, ge=256, le=8192, description="Max context window length")
-    max_questions_single: Optional[int] = Field(None, ge=1, le=50, description="Suggested questions for single document")
-    max_questions_multi: Optional[int] = Field(None, ge=1, le=50, description="Suggested questions for multiple documents")
+    top_k: Optional[int] = Field(None, ge=1, le=20, description="Number of chunks to retrieve")
+    temperature: Optional[float] = Field(None, ge=0.0, le=1.0, description="LLM temperature for answer generation")
+    max_suggested_questions: Optional[int] = Field(None, ge=1, le=20, description="Maximum suggested questions to generate")
 
 
 # FastAPI app
@@ -84,9 +85,79 @@ ingestor: Optional[DocumentIngestor] = None
 runtime_settings: Dict[str, Any] = {
     "chunking_level": settings.CHUNKING_LEVEL,
     "context_window_size": settings.CONTEXT_WINDOW_SIZE,
-    "max_questions_single": settings.MAX_SUGGESTED_QUESTIONS_SINGLE,
-    "max_questions_multi": settings.MAX_SUGGESTED_QUESTIONS_MULTI,
+    "top_k": settings.TOP_K,
+    "temperature": settings.TEMPERATURE,
+    "max_suggested_questions": getattr(settings, 'MAX_SUGGESTED_QUESTIONS', 8),
 }
+
+
+def _generate_fast_questions(chunks: List[str], num_questions: int, llm_engine) -> List[str]:
+    """Fast question generation optimized for speed over complexity."""
+    try:
+        # Use only first few chunks for speed
+        context = "\n\n".join(chunks[:10])
+        
+        # Simple, direct prompt for speed
+        prompt = f"""Based on this content, generate {num_questions} simple, direct questions that would help someone explore and understand the key information.
+
+Content:
+{context[:2000]}  
+
+Return only the questions as a simple JSON list:
+["Question 1?", "Question 2?", ...]
+
+Questions should be:
+- Clear and specific
+- Answerable from the content
+- Useful for exploration
+- Different from each other"""
+
+        response = llm_engine.generate(
+            prompt=prompt,
+            max_tokens=500,  # Reduced for speed
+            temperature=0.7
+        )
+        
+        # Simple parsing - look for JSON list
+        import json
+        try:
+            # Try to find JSON array in response
+            start = response.find('[')
+            end = response.rfind(']') + 1
+            if start >= 0 and end > start:
+                questions_json = response[start:end]
+                questions = json.loads(questions_json)
+                if isinstance(questions, list):
+                    return [q for q in questions if isinstance(q, str) and q.strip()]
+        except:
+            pass
+        
+        # Fallback: extract questions from text
+        lines = response.split('\n')
+        questions = []
+        for line in lines:
+            line = line.strip()
+            if line and ('?' in line or line.endswith('?')):
+                # Clean up common prefixes
+                for prefix in ['"', "'", "- ", "1. ", "2. ", "3. ", "4. ", "5. "]:
+                    if line.startswith(prefix):
+                        line = line[len(prefix):].strip()
+                if line.endswith('"') or line.endswith("'"):
+                    line = line[:-1]
+                if line:
+                    questions.append(line)
+                    if len(questions) >= num_questions:
+                        break
+        
+        return questions[:num_questions] if questions else ["What is the main topic discussed in this document?"]
+        
+    except Exception as e:
+        logger.error(f"Fast question generation failed: {e}")
+        return [
+            "What is the main topic of this document?",
+            "What are the key points mentioned?",
+            "What important information should I know?"
+        ][:num_questions]
 
 
 def init_components() -> None:
@@ -130,13 +201,13 @@ def init_components() -> None:
         else:
             logger.info(f"INIT STEP 3 COMPLETE: LLM engine initialized and ready")
         
-        # Step 4: Initialize RAG engine
-        logger.info(f"INIT STEP 4: Initializing RAG engine (top_k={settings.TOP_K}, temperature={settings.TEMPERATURE})")
+        # Step 4: Initialize RAG engine with runtime settings
+        logger.info(f"INIT STEP 4: Initializing RAG engine (top_k={runtime_settings['top_k']}, temperature={runtime_settings['temperature']})")
         rag_engine = RAGEngine(
             vector_store=vector_store,
             llm_engine=llm_engine,
-            top_k=settings.TOP_K,
-            temperature=settings.TEMPERATURE,
+            top_k=runtime_settings["top_k"],
+            temperature=runtime_settings["temperature"],
             context_window_size=runtime_settings["context_window_size"]
         )
         logger.info("INIT STEP 4 COMPLETE: RAG engine initialized")
@@ -210,13 +281,12 @@ async def get_config() -> dict:
             "embedding_model": settings.EMBEDDING_MODEL,
             "chunk_size": settings.CHUNK_SIZE,
             "chunk_overlap": settings.CHUNK_OVERLAP,
-            "temperature": settings.TEMPERATURE,
+            "temperature": runtime_settings["temperature"],  # Use runtime setting
             "max_tokens": settings.MAX_TOKENS,
-            "top_k": settings.TOP_K,
+            "top_k": runtime_settings["top_k"],  # Use runtime setting
             "chunking_level": runtime_settings["chunking_level"],
             "context_window_size": runtime_settings["context_window_size"],
-            "max_questions_single": runtime_settings["max_questions_single"],
-            "max_questions_multi": runtime_settings["max_questions_multi"],
+            "max_suggested_questions": runtime_settings["max_suggested_questions"],
             "active_chunk_size": ingestor.chunk_size if ingestor else settings.CHUNK_SIZE,
             "active_chunk_overlap": ingestor.chunk_overlap if ingestor else settings.CHUNK_OVERLAP,
         }
@@ -251,11 +321,18 @@ async def update_settings(req: SettingsUpdateRequest) -> dict:
             if rag_engine and hasattr(rag_engine, "set_context_window_size"):
                 rag_engine.set_context_window_size(updates["context_window_size"])
 
-        if "max_questions_single" in updates:
-            runtime_settings["max_questions_single"] = updates["max_questions_single"]
+        if "top_k" in updates:
+            runtime_settings["top_k"] = updates["top_k"]
+            if rag_engine:
+                rag_engine.set_top_k(updates["top_k"])
+        
+        if "temperature" in updates:
+            runtime_settings["temperature"] = updates["temperature"]
+            if rag_engine:
+                rag_engine.set_temperature(updates["temperature"])
 
-        if "max_questions_multi" in updates:
-            runtime_settings["max_questions_multi"] = updates["max_questions_multi"]
+        if "max_suggested_questions" in updates:
+            runtime_settings["max_suggested_questions"] = updates["max_suggested_questions"]
 
         return {
             "settings": {
@@ -451,10 +528,12 @@ async def chat(req: QueryRequest) -> QueryResponse:
         )
     logger.info(f"CHAT STEP 3 COMPLETE: Vector store validated ({len(vector_store.chunks)} chunks)")
     
-    # Step 4: Process query
+    # Step 4: Process query using runtime settings
     try:
-        logger.info(f"CHAT STEP 4: Processing query with top_k={req.top_k or settings.TOP_K}")
-        rag_engine.set_top_k(req.top_k or settings.TOP_K)
+        # Use runtime settings instead of hardcoded config values
+        current_top_k = req.top_k or runtime_settings["top_k"]
+        logger.info(f"CHAT STEP 4: Processing query with top_k={current_top_k} (from runtime settings)")
+        rag_engine.set_top_k(current_top_k)
         result = rag_engine.answer_query_with_context(req.question)
         
         if result.get("answer"):
@@ -478,92 +557,63 @@ async def chat(req: QueryRequest) -> QueryResponse:
         )
 
 
-@app.post("/quiz", response_model=QuizResponse)
-async def generate_quiz(req: QuizRequest) -> QuizResponse:
-    """Generate a multiple-choice quiz from the currently loaded document chunks."""
-    logger.info(f"=== Starting quiz endpoint flow: num_questions={req.num_questions} ===")
-
-    # Validate vector store
+@app.post("/suggested-questions", response_model=SuggestedQuestionsResponse)
+async def generate_suggested_questions(req: SuggestedQuestionsRequest) -> SuggestedQuestionsResponse:
+    """Generate suggested questions for document exploration (optimized for speed)."""
+    
+    # Quick validation without verbose logging for speed
     if not vector_store or not vector_store.chunks:
-        logger.warning("QUIZ STEP 1 FAILED: No documents loaded")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No documents loaded. Please upload documents first."
         )
 
-    # Validate LLM engine
     if not llm_engine or not llm_engine.is_ready():
-        logger.error("QUIZ STEP 2 FAILED: LLM not ready")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="LLM service not available. Check backend configuration."
         )
 
     try:
+        # Fast sampling - use smaller subset for speed
         all_chunks = vector_store.chunks
-        all_metadata = vector_store.metadata if getattr(vector_store, "metadata", None) else []
-
-        paired = list(zip(all_chunks, all_metadata)) if all_metadata else [(chunk, None) for chunk in all_chunks]
-
-        if len(paired) > 50:
-            step = max(1, len(paired) // 50)
-            sampled = paired[::step][:50]
+        sample_size = min(20, len(all_chunks))  # Reduced from 50 for speed
+        
+        if len(all_chunks) > sample_size:
+            step = max(1, len(all_chunks) // sample_size)
+            sampled_chunks = all_chunks[::step][:sample_size]
         else:
-            sampled = paired
-
-        context_chunks = [chunk for chunk, _ in sampled]
-        context_metadata = [meta for _, meta in sampled]
-
-        doc_names = {
-            (meta.get("source_doc") if meta else None) or "Document"
-            for meta in context_metadata
-        }
-        doc_count = max(1, len(doc_names))
-
-        requested_questions = req.num_questions or 5
-        limit = runtime_settings["max_questions_multi"] if doc_count > 1 else runtime_settings["max_questions_single"]
-        question_target = min(requested_questions, limit)
-
-        logger.info(
-            "QUIZ: Using %s chunks from %s total chunks (doc_count=%s, requested=%s, target=%s)",
-            len(context_chunks),
-            len(all_chunks),
-            doc_count,
-            requested_questions,
-            question_target,
-        )
-
-        result = generate_quiz_from_chunks(
-            llm_engine=llm_engine,
-            chunks=context_chunks,
-            metadata=context_metadata,
-            num_questions=question_target,
-            max_questions_single=runtime_settings["max_questions_single"],
-            max_questions_multi=runtime_settings["max_questions_multi"],
-        )
-
-        questions = result.get("questions", [])
-        if not questions:
-            logger.warning("QUIZ STEP 3 FAILED: No questions generated")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="No quiz questions generated"
+            sampled_chunks = all_chunks
+        
+        # Get document count for context
+        metadata = getattr(vector_store, 'metadata', [])
+        if metadata:
+            doc_names = set(
+                meta.get('source_doc', 'Document') 
+                for meta in metadata[:len(sampled_chunks)]
             )
-
-        logger.info(
-            "QUIZ STEP 3 COMPLETE: Generated %s question(s) for %s documents",
-            len(questions),
-            result.get("document_count", doc_count),
+            doc_count = len(doc_names)
+        else:
+            doc_count = 1
+        
+        # Generate simple, direct questions
+        questions = _generate_fast_questions(
+            chunks=sampled_chunks,
+            num_questions=min(req.num_questions or 5, runtime_settings["max_suggested_questions"]),
+            llm_engine=llm_engine
         )
 
-        return QuizResponse(questions=questions)
+        return SuggestedQuestionsResponse(
+            questions=questions,
+            document_count=doc_count
+        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"QUIZ FAILED: Error generating quiz: {e}", exc_info=True)
+        logger.error(f"Error generating suggested questions: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating quiz: {str(e)}"
+            detail="Failed to generate suggested questions"
         )
 
 
@@ -572,8 +622,14 @@ async def get_documents() -> dict:
     """Get document statistics."""
     try:
         chunk_count = len(vector_store.chunks) if vector_store else 0
+        documents = (
+            vector_store.get_document_stats(settings.KNOWLEDGE_MANIFEST_PATH)
+            if vector_store else []
+        )
         return {
             "chunks": chunk_count,
+            "documents": documents,
+            "total_documents": len(documents),
             "vector_store_ready": vector_store is not None
         }
     except Exception as e:
@@ -607,6 +663,73 @@ async def clear() -> dict:
         )
 
 
+@app.post("/documents/reload")
+async def reload_documents() -> dict:
+    """Reload vector store contents from disk without restarting the service."""
+    try:
+        if not vector_store:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Vector store not initialized"
+            )
+
+        total = vector_store.reload_from_disk()
+        documents = vector_store.get_document_stats(settings.KNOWLEDGE_MANIFEST_PATH)
+        return {
+            "status": "ok",
+            "chunks": total,
+            "documents": documents,
+            "total_documents": len(documents)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reloading vector store: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error reloading vector store"
+        )
+
+
+@app.delete("/documents/{document_name}")
+async def delete_document(document_name: str) -> dict:
+    """Delete a specific document from the vector store."""
+    try:
+        if not vector_store:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Vector store not initialized"
+            )
+
+        # URL decode the document name
+        import urllib.parse
+        decoded_name = urllib.parse.unquote(document_name)
+        
+        # Try to delete the document
+        deleted_count = vector_store.delete_document(decoded_name)
+        
+        if deleted_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document '{decoded_name}' not found in vector store"
+            )
+        
+        logger.info(f"Deleted document '{decoded_name}': {deleted_count} chunks removed")
+        return {
+            "status": "ok",
+            "message": f"Document '{decoded_name}' deleted successfully",
+            "chunks_removed": deleted_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document '{document_name}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting document: {str(e)}"
+        )
+
+
 @app.get("/")
 async def root() -> dict:
     """API information endpoint."""
@@ -617,7 +740,10 @@ async def root() -> dict:
             "health": "GET /health",
             "upload": "POST /upload",
             "chat": "POST /chat",
+            "suggested-questions": "POST /suggested-questions",
             "documents": "GET /documents",
+            "documents/reload": "POST /documents/reload",
+            "documents/{name}": "DELETE /documents/{name}",
             "clear": "DELETE /clear"
         },
         "status": "operational"

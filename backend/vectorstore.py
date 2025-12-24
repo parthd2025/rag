@@ -7,7 +7,8 @@ import json
 import numpy as np
 import faiss
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
+from datetime import datetime, timezone
 from sentence_transformers import SentenceTransformer
 
 from logger_config import logger
@@ -60,6 +61,125 @@ class FAISSVectorStore:
         self.chunks: List[str] = []
         self.metadata: List[dict] = []  # Store metadata for each chunk: {source_doc, chunk_index, timestamp}
         self._load_or_create_index()
+
+    def reload_from_disk(self) -> int:
+        """Reload FAISS index and metadata from disk."""
+        logger.info("=== Starting reload vector store flow ===")
+        try:
+            self.index = None
+            self.chunks = []
+            self.metadata = []
+            self._load_or_create_index()
+            logger.info(f"=== Reload flow COMPLETE: {len(self.chunks)} chunk(s) loaded ===")
+            return len(self.chunks)
+        except Exception as e:
+            logger.error(f"RELOAD FAILED: {e}", exc_info=True)
+            raise
+
+    def get_document_stats(self, manifest_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Aggregate per-document statistics with optional manifest enrichment."""
+
+        stats: Dict[str, Dict[str, Any]] = {}
+
+        def _normalize_timestamp(value: Optional[Any]) -> Optional[str]:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                return value
+            if isinstance(value, datetime):
+                ts = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+                return ts.isoformat()
+            return str(value)
+
+        for meta in self.metadata:
+            doc_key = meta.get("source_doc") or "unknown"
+            entry = stats.setdefault(doc_key, {
+                "source_doc": doc_key,
+                "name": doc_key,
+                "chunks": 0,
+                "last_chunk_at": None,
+                "preview": None,
+            })
+
+            entry["chunks"] += 1
+
+            timestamp = meta.get("timestamp")
+            if timestamp:
+                ts_norm = _normalize_timestamp(timestamp)
+                if ts_norm and (entry["last_chunk_at"] is None or ts_norm > entry["last_chunk_at"]):
+                    entry["last_chunk_at"] = ts_norm
+
+            if entry["preview"] is None and meta.get("preview"):
+                entry["preview"] = meta.get("preview")
+
+        manifest_entries: Dict[str, Dict[str, Any]] = {}
+        if manifest_path:
+            manifest_file = Path(manifest_path)
+            if manifest_file.exists():
+                try:
+                    import yaml  # type: ignore
+
+                    with open(manifest_file, "r", encoding="utf-8") as fh:
+                        manifest_data = yaml.safe_load(fh) or {}
+
+                    for doc in manifest_data.get("documents", []):
+                        ingestion_info = doc.get("ingestion", {}) or {}
+                        key = ingestion_info.get("source_doc") or doc.get("id")
+                        filename = doc.get("filename")
+                        if not key and filename:
+                            key = Path(filename).stem
+                        if key:
+                            manifest_entries[key] = doc
+                except ImportError:
+                    logger.warning("PyYAML not installed. Skipping manifest enrichment.")
+                except Exception as exc:
+                    logger.warning(f"Error parsing manifest {manifest_path}: {exc}")
+
+        for key, entry in stats.items():
+            manifest_doc = manifest_entries.get(key)
+            if manifest_doc:
+                display_name = manifest_doc.get("title") or manifest_doc.get("filename") or entry["name"]
+                entry["name"] = display_name
+                entry["title"] = manifest_doc.get("title")
+                entry["version"] = manifest_doc.get("version")
+                entry["owner"] = manifest_doc.get("owner")
+                entry["tags"] = manifest_doc.get("tags") or []
+                ingestion_info = manifest_doc.get("ingestion", {}) or {}
+                entry["ingested_at"] = ingestion_info.get("last_ingested") or entry.get("last_chunk_at")
+                entry["source_doc"] = ingestion_info.get("source_doc") or entry["source_doc"]
+            else:
+                entry.setdefault("tags", [])
+                entry.setdefault("ingested_at", entry.get("last_chunk_at"))
+
+        for key, manifest_doc in manifest_entries.items():
+            if key not in stats:
+                ingestion_info = manifest_doc.get("ingestion", {}) or {}
+                stats[key] = {
+                    "source_doc": ingestion_info.get("source_doc") or key,
+                    "name": manifest_doc.get("title") or manifest_doc.get("filename") or key,
+                    "title": manifest_doc.get("title"),
+                    "version": manifest_doc.get("version"),
+                    "owner": manifest_doc.get("owner"),
+                    "tags": manifest_doc.get("tags") or [],
+                    "chunks": 0,
+                    "last_chunk_at": None,
+                    "ingested_at": ingestion_info.get("last_ingested"),
+                    "preview": None,
+                }
+
+        # Finalize defaults
+        for entry in stats.values():
+            entry.setdefault("tags", [])
+            entry.setdefault("ingested_at", entry.get("last_chunk_at"))
+            entry["ingested_at"] = _normalize_timestamp(entry.get("ingested_at"))
+            entry["last_chunk_at"] = _normalize_timestamp(entry.get("last_chunk_at"))
+
+        sorted_docs = sorted(
+            stats.values(),
+            key=lambda item: (item.get("name") or item.get("source_doc") or "").lower()
+        )
+
+        return sorted_docs
     
     def _load_or_create_index(self) -> None:
         """Load existing index or create new one."""

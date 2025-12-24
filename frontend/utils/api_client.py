@@ -109,20 +109,20 @@ class APIClient:
             logger.error(f"Query failed: {e}")
             raise
     
-    def generate_quiz(self, num_questions: int = 5) -> Optional[Dict[str, Any]]:
-        """Generate quiz from uploaded documents."""
+    def generate_suggested_questions(self, num_questions: int = 5) -> Optional[Dict[str, Any]]:
+        """Generate suggested questions from uploaded documents."""
         payload = {"num_questions": min(num_questions, 20)}
         
         try:
             response = self.session.post(
-                f"{self.base_url}/quiz",
+                f"{self.base_url}/suggested-questions",
                 json=payload,
-                timeout=120,
+                timeout=30,  # Reduced timeout for faster response
             )
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"Quiz generation failed: {e}")
+            logger.error(f"Suggested questions generation failed: {e}")
             raise
     
     def get_documents(self) -> Optional[Dict[str, Any]]:

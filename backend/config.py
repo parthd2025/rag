@@ -31,11 +31,11 @@ class Settings(BaseSettings):
     LLM_MODEL: str = Field("llama-3.3-70b-versatile", env="LLM_MODEL")
     LLM_PROVIDER: str = Field("groq", env="LLM_PROVIDER")  # groq or gemini
     
-    # RAG Configuration
-    TOP_K: int = Field(8, env="TOP_K")
-    TEMPERATURE: float = Field(0.7, env="TEMPERATURE")
-    MAX_TOKENS: int = Field(512, env="MAX_TOKENS")
-    CONTEXT_WINDOW_SIZE: int = Field(2048, env="CONTEXT_WINDOW_SIZE")
+    # RAG Configuration - Optimized for better quality
+    TOP_K: int = Field(10, env="TOP_K")  # Increased for better context
+    TEMPERATURE: float = Field(0.3, env="TEMPERATURE")  # Lower for more consistent answers
+    MAX_TOKENS: int = Field(800, env="MAX_TOKENS")  # Increased for detailed answers
+    CONTEXT_WINDOW_SIZE: int = Field(4000, env="CONTEXT_WINDOW_SIZE")  # Larger context window
     
     # Chunking Configuration
     CHUNK_SIZE: int = Field(1000, env="CHUNK_SIZE")
@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # Vector Store Configuration
     INDEX_PATH: str = Field("data/embeddings/faiss.index", env="INDEX_PATH")
     METADATA_PATH: str = Field("data/embeddings/metadata.json", env="METADATA_PATH")
+    KNOWLEDGE_MANIFEST_PATH: str = Field("docs/knowledge-base/manifest.yaml", env="KNOWLEDGE_MANIFEST_PATH")
     
     # CORS Configuration
     CORS_ORIGINS: List[str] = Field(
@@ -72,8 +73,7 @@ class Settings(BaseSettings):
     LOG_FILE: str = Field("logs/rag_system.log", env="LOG_FILE")
     LOG_MAX_BYTES: int = Field(10 * 1024 * 1024, env="LOG_MAX_BYTES")  # 10MB
     LOG_BACKUP_COUNT: int = Field(5, env="LOG_BACKUP_COUNT")
-    MAX_SUGGESTED_QUESTIONS_SINGLE: int = Field(10, env="MAX_SUGGESTED_QUESTIONS_SINGLE")
-    MAX_SUGGESTED_QUESTIONS_MULTI: int = Field(20, env="MAX_SUGGESTED_QUESTIONS_MULTI")
+    MAX_SUGGESTED_QUESTIONS: int = Field(8, env="MAX_SUGGESTED_QUESTIONS")
     
     @validator("ALLOWED_EXTENSIONS", pre=True)
     def parse_extensions(cls, v):
@@ -111,14 +111,14 @@ class Settings(BaseSettings):
             return 2048
         return max(256, min(size, 8192))
 
-    @validator("MAX_SUGGESTED_QUESTIONS_SINGLE", "MAX_SUGGESTED_QUESTIONS_MULTI", pre=True, always=True)
-    def clamp_question_counts(cls, v):
-        """Ensure suggested question counts are positive."""
+    @validator("MAX_SUGGESTED_QUESTIONS", pre=True, always=True)
+    def clamp_question_count(cls, v):
+        """Ensure suggested question count is positive and reasonable."""
         try:
             count = int(v)
         except (TypeError, ValueError):
-            return 10
-        return max(1, min(count, 50))
+            return 8
+        return max(1, min(count, 20))
     
     @property
     def allowed_extensions_set(self) -> Set[str]:

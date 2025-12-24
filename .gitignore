@@ -70,8 +70,8 @@ backend/data/embeddings/
 *.index
 *.faiss
 
-# Documentation outputs
-docs/
+## Documentation
+# Track documentation to keep knowledge sources versioned
 
 # Uploaded documents
 data/documents/
