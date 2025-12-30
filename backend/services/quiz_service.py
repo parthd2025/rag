@@ -1,7 +1,7 @@
 """Quiz/Question generation service."""
 
 from typing import List, Dict, Any
-from logger_config import logger
+from ..logger_config import logger
 import quiz as quiz_module
 
 

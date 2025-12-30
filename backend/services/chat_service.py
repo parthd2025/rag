@@ -2,7 +2,7 @@
 
 import time
 from typing import List, Dict, Any
-from logger_config import logger
+from ..logger_config import logger
 
 
 class ChatService:

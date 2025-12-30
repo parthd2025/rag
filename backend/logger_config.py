@@ -7,7 +7,7 @@ from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
-from config import settings
+from .config import settings
 
 
 def setup_logger(name: str = "rag_system", log_file: Optional[str] = None) -> logging.Logger:

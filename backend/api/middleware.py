@@ -2,7 +2,7 @@
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from logger_config import logger
+from ..logger_config import logger
 import time
 import uuid
 

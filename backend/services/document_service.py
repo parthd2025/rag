@@ -4,7 +4,7 @@ import os
 import json
 from typing import List, Dict, Any
 from datetime import datetime
-from logger_config import logger
+from ..logger_config import logger
 
 
 class DocumentService:
@@ -94,23 +94,50 @@ class DocumentService:
             logger.error(f"DOCUMENT_SERVICE: Error retrieving documents: {e}")
             raise
     
-    async def delete_document(self, document_name: str) -> bool:
+    async def delete_document(self, document_name: str) -> Dict[str, Any]:
         """
-        Delete a document from vectorstore.
+        Delete a specific document from vectorstore.
         
         Args:
             document_name: Name of document to delete
             
         Returns:
-            Success status
+            Dictionary with success status and deletion details
         """
         try:
             logger.info(f"DOCUMENT_SERVICE: Deleting document: {document_name}")
+            
+            # Check if document exists first
+            metadata = self.vectorstore.get_metadata()
+            if not metadata or document_name not in metadata:
+                logger.warning(f"DOCUMENT_SERVICE: Document '{document_name}' not found")
+                return {
+                    "success": False,
+                    "message": f"Document '{document_name}' not found",
+                    "chunks_removed": 0
+                }
+            
+            # Get chunk count before deletion
+            chunks_before = len(metadata.get(document_name, {}).get("chunks", []))
+            
+            # Delete the document
             self.vectorstore.delete_document(document_name)
-            return True
+            
+            logger.info(f"DOCUMENT_SERVICE: Successfully deleted '{document_name}' ({chunks_before} chunks)")
+            
+            return {
+                "success": True,
+                "message": f"Document '{document_name}' deleted successfully",
+                "chunks_removed": chunks_before
+            }
+            
         except Exception as e:
-            logger.error(f"DOCUMENT_SERVICE: Error deleting document: {e}")
-            raise
+            logger.error(f"DOCUMENT_SERVICE: Error deleting document '{document_name}': {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error deleting document: {str(e)}",
+                "chunks_removed": 0
+            }
     
     async def clear_all_documents(self) -> bool:
         """Clear all documents from vectorstore."""

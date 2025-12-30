@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from api.models.requests import SettingsRequest
-from logger_config import logger
+from ...logger_config import logger
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 

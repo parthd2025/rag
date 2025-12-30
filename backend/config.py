@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     
     # API Keys
     GROQ_API_KEY: Optional[str] = Field(None, env="GROQ_API_KEY")
-    GEMINI_API_KEY: Optional[str] = Field(None, env="GEMINI_API_KEY")
     
     # Server Configuration
     API_HOST: str = Field("0.0.0.0", env="API_HOST")
@@ -29,18 +28,18 @@ class Settings(BaseSettings):
     # Model Configuration
     EMBEDDING_MODEL: str = Field("all-MiniLM-L6-v2", env="EMBEDDING_MODEL")
     LLM_MODEL: str = Field("llama-3.3-70b-versatile", env="LLM_MODEL")
-    LLM_PROVIDER: str = Field("groq", env="LLM_PROVIDER")  # groq or gemini
+    LLM_PROVIDER: str = Field("groq", env="LLM_PROVIDER")
     
     # RAG Configuration - Optimized for better quality
-    TOP_K: int = Field(10, env="TOP_K")  # Increased for better context
+    TOP_K: int = Field(12, env="TOP_K")  # Increased for maximum coverage
     TEMPERATURE: float = Field(0.3, env="TEMPERATURE")  # Lower for more consistent answers
-    MAX_TOKENS: int = Field(800, env="MAX_TOKENS")  # Increased for detailed answers
+    MAX_TOKENS: int = Field(1000, env="MAX_TOKENS")  # Increased for detailed answers
     CONTEXT_WINDOW_SIZE: int = Field(4000, env="CONTEXT_WINDOW_SIZE")  # Larger context window
     
-    # Chunking Configuration
-    CHUNK_SIZE: int = Field(1000, env="CHUNK_SIZE")
-    CHUNK_OVERLAP: int = Field(200, env="CHUNK_OVERLAP")
-    CHUNKING_LEVEL: int = Field(5, env="CHUNKING_LEVEL")
+    # Chunking Configuration - Optimized for specific term retrieval
+    CHUNK_SIZE: int = Field(800, env="CHUNK_SIZE")  # Smaller chunks for precision
+    CHUNK_OVERLAP: int = Field(100, env="CHUNK_OVERLAP")  # Increased overlap for context preservation
+    CHUNKING_LEVEL: int = Field(3, env="CHUNKING_LEVEL")  # Best practice level
     
     # File Upload Configuration
     MAX_FILE_SIZE: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB default

@@ -9,12 +9,12 @@ from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 import uvicorn
 
-from config import settings
-from logger_config import logger
-from ingest import DocumentIngestor
-from vectorstore import FAISSVectorStore
-from llm_loader import get_llm_engine
-from rag_engine import RAGEngine
+from backend.config import settings
+from backend.logger_config import logger
+from backend.ingest import DocumentIngestor
+from backend.vectorstore import FAISSVectorStore
+from backend.llm_loader import get_llm_engine
+from backend.rag_engine import RAGEngine
 
 
 class QueryRequest(BaseModel):
@@ -195,7 +195,7 @@ def init_components() -> None:
         
         # Step 3: Initialize LLM engine
         logger.info(f"INIT STEP 3: Initializing LLM engine (provider={settings.LLM_PROVIDER}, model={settings.LLM_MODEL})")
-        llm_engine = get_llm_engine(use_groq=(settings.LLM_PROVIDER.lower() == "groq"))
+        llm_engine = get_llm_engine()
         if not llm_engine.is_ready():
             logger.warning("INIT STEP 3 FAILED: LLM engine not ready - check API key configuration")
         else:

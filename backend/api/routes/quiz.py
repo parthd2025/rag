@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from api.models.responses import QuizResponse
-from logger_config import logger
+from ...logger_config import logger
 
 router = APIRouter(prefix="/quiz", tags=["quiz"])
 

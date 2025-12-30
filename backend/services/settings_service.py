@@ -1,7 +1,7 @@
 """Settings and configuration service."""
 
 from typing import Dict, Any, Optional
-from logger_config import logger
+from ..logger_config import logger
 
 
 class SettingsService:

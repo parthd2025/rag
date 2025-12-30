@@ -57,8 +57,9 @@ class APIClient:
             return None
     
     def upload_document(self, file_data: bytes, filename: str) -> Optional[Dict[str, Any]]:
-        """Upload document to backend with retry logic."""
-        files = {"file": (filename, file_data)}
+        """Upload single document to backend with retry logic."""
+        # Backend expects a list of files, so we need to send as 'files' not 'file'
+        files = [("files", (filename, file_data))]
         
         for attempt in range(self.max_retries):
             try:
@@ -79,35 +80,76 @@ class APIClient:
                     raise
         
         return None
+
+    def upload_multiple_documents(self, files_data: List[tuple]) -> Optional[Dict[str, Any]]:
+        """Upload multiple documents at once to backend."""
+        # files_data is list of (file_data, filename) tuples
+        files = [("files", (filename, file_data)) for file_data, filename in files_data]
+        
+        for attempt in range(self.max_retries):
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/upload",
+                    files=files,
+                    timeout=300,  # Longer timeout for multiple files
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.Timeout:
+                if attempt == self.max_retries - 1:
+                    raise
+                logger.warning(f"Bulk upload timeout, retrying... ({attempt + 1}/{self.max_retries})")
+            except Exception as e:
+                logger.error(f"Bulk upload failed: {e}")
+                if attempt == self.max_retries - 1:
+                    raise
+        
+        return None
     
     def query(
         self,
         question: str,
-        top_k: int = 5
+        top_k: int = 5,
+        stream: bool = False
     ) -> Optional[Dict[str, Any]]:
-        """Submit question and get answer with sources."""
+        """Submit question and get answer with sources, optionally with streaming."""
         payload = {
             "question": question,
             "top_k": top_k,
+            "stream": stream
         }
         
         try:
-            response = self.session.post(
-                f"{self.base_url}/chat",
-                json=payload,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            return response.json()
+            if stream:
+                return self._query_stream(payload)
+            else:
+                return self._query_standard(payload)
         except requests.exceptions.Timeout:
             raise TimeoutError(f"Request timed out after {self.timeout}s")
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 404:
+            if hasattr(e, 'response') and e.response.status_code == 404:
                 raise ValueError("No documents uploaded. Please upload documents first.")
             raise
         except Exception as e:
             logger.error(f"Query failed: {e}")
             raise
+    
+    def _query_standard(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Standard non-streaming query."""
+        response = self.session.post(
+            f"{self.base_url}/chat",
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def _query_stream(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Streaming query implementation (fallback to standard for now)."""
+        # Note: Streaming requires backend implementation
+        # For now, fall back to standard query
+        logger.info("Streaming requested but not yet implemented, using standard query")
+        return self._query_standard(payload)
     
     def generate_suggested_questions(self, num_questions: int = 5) -> Optional[Dict[str, Any]]:
         """Generate suggested questions from uploaded documents."""
@@ -149,6 +191,46 @@ class APIClient:
             return True
         except Exception as e:
             logger.error(f"Clear data failed: {e}")
+            return False
+    
+    def delete_document(self, document_name: str) -> bool:
+        """Delete a specific document from the backend."""
+        try:
+            response = self.session.delete(
+                f"{self.base_url}/documents/{document_name}",
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Delete document failed: {e}")
+            return False
+    
+    def get_document_status(self, document_name: str) -> Optional[Dict[str, Any]]:
+        """Get status information for a specific document."""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/documents/{document_name}/status",
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Get document status failed: {e}")
+            return None
+    
+    def update_settings(self, settings: Dict[str, Any]) -> bool:
+        """Update system settings."""
+        try:
+            response = self.session.put(
+                f"{self.base_url}/settings",
+                json=settings,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Update settings failed: {e}")
             return False
 
 

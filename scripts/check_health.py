@@ -43,9 +43,8 @@ def check_imports():
 
 
 def check_llm_optional():
-    """Check for LLM packages (optional)."""
+    """Check for optional LLM packages."""
     packages = {
-        "llama_cpp": "llama-cpp-python",
         "transformers": "Transformers (for HuggingFace models)",
         "torch": "PyTorch (for GPU support)",
     }
@@ -56,7 +55,7 @@ def check_llm_optional():
             __import__(package)
             print(f"✅ {name}")
         except ImportError:
-            print(f"⚠️  {name} - For offline LLM inference")
+            print(f"⚠️  {name} - For enhanced functionality")
 
 
 def check_directories():
@@ -80,23 +79,16 @@ def check_directories():
     return all_exist
 
 
-def check_models():
-    """Check if any GGUF models are available."""
-    models_dir = Path("models")
-    if not models_dir.exists():
-        print("❌ models/ directory not found")
-        return False
-    
-    gguf_files = list(models_dir.glob("*.gguf"))
-    if gguf_files:
-        print(f"✅ Found {len(gguf_files)} model(s):")
-        for model in gguf_files:
-            size_gb = model.stat().st_size / (1024**3)
-            print(f"   • {model.name} ({size_gb:.1f} GB)")
+def check_cloud_setup():
+    """Check if Groq API is configured."""
+    import os
+    api_key = os.getenv("GROQ_API_KEY")
+    if api_key:
+        print("✅ Groq API key configured")
         return True
     else:
-        print("⚠️  No GGUF models found in models/")
-        print("   Download from: https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
+        print("⚠️  GROQ_API_KEY not found in environment")
+        print("   Get a free API key at: https://console.groq.com/keys")
         return False
 
 
@@ -122,7 +114,7 @@ def main():
         ("Python Version", check_python_version),
         ("Required Packages", check_imports),
         ("Directories", check_directories),
-        ("Models", check_models),
+        ("Groq API Setup", check_cloud_setup),
     ]
     
     results = []
@@ -158,10 +150,9 @@ def main():
     if all_passed:
         print("✅ Everything looks good! Ready to run RAG chatbot.")
         print("\nNext steps:")
-        print("1. (Optional) Download a model: https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF")
-        print("2. Start backend:  cd backend && python main.py")
-        print("3. Start frontend: cd frontend && streamlit run app.py")
-        print("4. Open browser:   http://localhost:8501")
+        print("1. Start backend:  cd backend && python main.py")
+        print("2. Start frontend: cd frontend && streamlit run app.py")
+        print("3. Open browser:   http://localhost:8501")
     else:
         print("❌ Some checks failed. Please fix issues above.")
         print("\nFor help, see: QUICKSTART.md or SETUP.md")

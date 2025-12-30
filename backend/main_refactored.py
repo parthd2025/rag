@@ -8,21 +8,21 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import asyncio
 
-from config import settings
-from logger_config import logger
-from ingest import DocumentIngestor
-from vectorstore import FAISSVectorStore
-from llm_loader import get_llm_engine
-from rag_engine import RAGEngine
+from backend.config import settings
+from backend.logger_config import logger
+from backend.ingest import DocumentIngestor
+from backend.vectorstore import FAISSVectorStore
+from backend.llm_loader import get_llm_engine
+from backend.rag_engine import RAGEngine
 
 # Import service layer
-from services.chat_service import ChatService
-from services.document_service import DocumentService
-from services.quiz_service import QuizService
-from services.settings_service import SettingsService
+from backend.services.chat_service import ChatService
+from backend.services.document_service import DocumentService
+from backend.services.quiz_service import QuizService
+from backend.services.settings_service import SettingsService
 
 # Import routes
-from api.routes import chat, documents, health, quiz, settings as settings_routes
+from backend.api.routes import chat, documents, health, quiz, settings as settings_routes
 
 # ============================================================================
 # GLOBAL INSTANCES

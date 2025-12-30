@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List
 from api.models.responses import DocumentListResponse, DocumentInfo
-from logger_config import logger
+from ...logger_config import logger
 import os
 import tempfile
 
@@ -130,4 +130,38 @@ async def clear_documents() -> dict:
         
     except Exception as e:
         logger.error(f"ENDPOINT: /documents/clear error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{document_name}")
+async def delete_document(document_name: str) -> dict:
+    """
+    Delete a specific document from vectorstore.
+    
+    Args:
+        document_name: Name of the document to delete
+        
+    Returns:
+        Success status with deletion details
+    """
+    try:
+        logger.info(f"ENDPOINT: /documents/{document_name} - Delete document")
+        
+        from main import document_service
+        
+        result = await document_service.delete_document(document_name)
+        
+        if result["success"]:
+            return {
+                "success": True, 
+                "message": f"Document '{document_name}' deleted successfully",
+                "chunks_removed": result.get("chunks_removed", 0)
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Document '{document_name}' not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"ENDPOINT: /documents/{document_name} delete error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

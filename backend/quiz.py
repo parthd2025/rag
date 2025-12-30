@@ -5,7 +5,7 @@ Implements hybrid approach: comparative questions + document-specific questions.
 
 from typing import List, Dict, Any, Optional, Set
 
-from logger_config import logger
+from .logger_config import logger
 
 
 def build_comparative_questions_prompt(

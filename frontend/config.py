@@ -92,15 +92,6 @@ SESSION_KEYS = {
     "system_status": "system_status",
 }
 
-# Demo Content
-DEMO_QUESTIONS = [
-    "What is the main topic of the document?",
-    "Can you summarize the key points?",
-    "What are the most important findings?",
-    "How does this relate to...?",
-    "What are the next steps recommended?",
-]
-
 # Professional UI Strings
 UI_STRINGS = {
     "welcome": "Welcome to RAG Chatbot",

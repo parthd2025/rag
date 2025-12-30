@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime
 from api.models.requests import QueryRequest
 from api.models.responses import QueryResponse
-from logger_config import logger
+from ...logger_config import logger
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 

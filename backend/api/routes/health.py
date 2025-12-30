@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from api.models.responses import HealthResponse
-from logger_config import logger
+from ...logger_config import logger
 from datetime import datetime
 
 router = APIRouter(prefix="/health", tags=["health"])

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 import re
 
-from logger_config import logger
+from .logger_config import logger
 
 
 class DocumentIngestor:
@@ -41,6 +41,8 @@ class DocumentIngestor:
         self.chunking_level: Optional[int] = None
         # Store stats about the last chunking operation so the API/UI can report patterns used
         self.last_chunk_stats: dict = {}
+        # Special terms that should be kept together
+        self.preserve_terms = ['m2', 'M2', 'mileage', 'allowance', 'transportation', 'benefits']
         logger.info(f"DocumentIngestor initialized: chunk_size={chunk_size}, overlap={chunk_overlap}, ocr={enable_ocr}")
         if chunking_level is not None:
             self.set_chunking_level(chunking_level)
@@ -667,6 +669,17 @@ class DocumentIngestor:
                 end = start + self.chunk_size
 
                 if end < len(t):
+                    # Special handling for preserve terms - extend window if needed
+                    for term in self.preserve_terms:
+                        term_pos = t.find(term, start, end + 100)  # Look ahead slightly
+                        if term_pos != -1 and term_pos > end - 50:  # If term is near boundary
+                            # Find end of the term's context (next sentence or paragraph)
+                            context_end = t.find('.', term_pos)
+                            if context_end != -1 and context_end < end + 200:
+                                end = context_end + 1
+                                break
+                    
+                    # Normal sentence boundary detection
                     last_period = t.rfind('.', start, end)
                     last_exclamation = t.rfind('!', start, end)
                     last_question = t.rfind('?', start, end)

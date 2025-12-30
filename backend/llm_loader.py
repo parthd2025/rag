@@ -5,8 +5,8 @@ Groq LLM inference engine with improved error handling and configuration.
 from typing import Optional
 from pathlib import Path
 
-from config import settings
-from logger_config import logger
+from .config import settings
+from .logger_config import logger
 
 
 class GroqLLMEngine:
@@ -99,18 +99,11 @@ class GroqLLMEngine:
         return self.model_loaded and self.client is not None
 
 
-def get_llm_engine(use_groq: bool = True):
+def get_llm_engine():
     """
-    Get LLM engine instance.
+    Get Groq LLM engine instance.
     
-    Args:
-        use_groq: Whether to use Groq (currently only Groq is supported)
-        
     Returns:
-        LLM engine instance
+        GroqLLMEngine instance
     """
-    if use_groq:
-        return GroqLLMEngine()
-    else:
-        logger.warning("Only Groq is currently supported")
-        return GroqLLMEngine()
+    return GroqLLMEngine()
