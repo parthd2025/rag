@@ -416,6 +416,7 @@ class RAGEngine:
     def _retrieve_context_with_fallback(self, question: str, document_filter: Optional[List[str]] = None) -> Tuple[List[Tuple[str, float, dict]], float]:
         """
         Retrieve context with enhanced search capabilities and fallback mechanism.
+        Uses dynamic multi-document detection based on actual search results.
         
         Args:
             question: Question to search for
@@ -426,35 +427,36 @@ class RAGEngine:
         """
         logger.info(f"Retrieving context with enhanced search: top_k={self.top_k}, hybrid={self.enable_hybrid_search}")
         
-        # Detect query type for optimized search strategy
-        query_type = self._detect_query_type(question)
-        logger.info(f"Detected query type: {query_type}")
-        
-        # Choose search strategy based on query type and filters
-        if document_filter:
-            # Document-specific search
-            results = self._document_specific_search(question, document_filter, self.top_k)
-        elif 'm2' in question.lower() or 'mileage' in question.lower():
-            # Use document boosting for M2 queries
-            results = self._search_with_document_boost(question, self.top_k)
-        elif query_type == "comparative":
-            # Cross-document comparative search
-            doc_results = self._cross_document_search(question, self.top_k)
-            # Flatten results while preserving diversity
-            results = []
-            for doc_name, doc_chunks in doc_results.items():
-                results.extend(doc_chunks[:2])  # Max 2 chunks per document
-            results = sorted(results, key=lambda x: x[1], reverse=True)[:self.top_k]
+        # Step 1: Always do initial broad search to understand document landscape
+        if self.enable_hybrid_search:
+            initial_results = self._hybrid_search(question, self.top_k * 2)
         else:
-            # Standard search (semantic or hybrid)
-            if self.enable_hybrid_search:
-                results = self._hybrid_search(question, self.top_k)
-            else:
-                results = self.vector_store.search(question, top_k=self.top_k)
+            initial_results = self.vector_store.search(question, top_k=self.top_k * 2)
+        
+        if not initial_results:
+            logger.warning("No results found in initial retrieval")
+            return [], 0.0
+        
+        # Step 2: Analyze which documents are relevant (dynamic detection)
+        doc_relevance = self._analyze_document_relevance(initial_results)
+        num_relevant_docs = len([d for d, scores in doc_relevance.items() if max(scores) > 0.5])
+        
+        logger.info(f"Document relevance analysis: {len(doc_relevance)} docs found, {num_relevant_docs} highly relevant")
+        
+        # Step 3: Choose strategy based on document distribution
+        if document_filter:
+            # User specified documents - filter results
+            results = self._document_specific_search(question, document_filter, self.top_k)
+        elif num_relevant_docs > 1:
+            # Multi-document query detected dynamically - ensure diversity
+            results = self._ensure_document_diversity(initial_results, self.top_k)
+            logger.info(f"Multi-document query: Ensuring diversity across {num_relevant_docs} documents")
+        else:
+            # Single document focus - use standard results
+            results = initial_results[:self.top_k]
         
         if not results:
-            logger.warning("No results found in initial retrieval")
-            return results, 0.0
+            return [], 0.0
             
         similarities = [sim for _, sim, _ in results]
         avg_similarity = sum(similarities) / len(similarities)
@@ -464,7 +466,6 @@ class RAGEngine:
         if avg_similarity < self.min_similarity_threshold and len(results) < 20:
             logger.info(f"Average similarity ({avg_similarity:.4f}) below threshold. Retrieving more chunks...")
             
-            # Try broader search for fallback
             if self.enable_hybrid_search:
                 more_results = self._hybrid_search(question, min(self.top_k * 2, 20))
             else:
@@ -477,12 +478,64 @@ class RAGEngine:
                 logger.info(f"Fallback retrieval: {len(results)} results, avg_similarity: {avg_similarity:.4f}")
         
         return results, avg_similarity
+
+    def _analyze_document_relevance(self, results: List[Tuple[str, float, dict]]) -> Dict[str, List[float]]:
+        """
+        Analyze which documents are relevant based on search results.
+        Returns dict of document_name -> list of similarity scores.
+        """
+        doc_scores: Dict[str, List[float]] = {}
+        
+        for chunk, score, metadata in results:
+            doc_name = self._extract_document_name(metadata)
+            if doc_name not in doc_scores:
+                doc_scores[doc_name] = []
+            doc_scores[doc_name].append(score)
+        
+        return doc_scores
+
+    def _ensure_document_diversity(self, results: List[Tuple[str, float, dict]], top_k: int) -> List[Tuple[str, float, dict]]:
+        """
+        Ensure results include chunks from multiple relevant documents.
+        Uses round-robin selection to maintain diversity while respecting relevance.
+        """
+        # Group by document
+        doc_chunks: Dict[str, List[Tuple[str, float, dict]]] = {}
+        for chunk, score, metadata in results:
+            doc_name = self._extract_document_name(metadata)
+            if doc_name not in doc_chunks:
+                doc_chunks[doc_name] = []
+            doc_chunks[doc_name].append((chunk, score, metadata))
+        
+        # Sort each document's chunks by score
+        for doc_name in doc_chunks:
+            doc_chunks[doc_name].sort(key=lambda x: x[1], reverse=True)
+        
+        # Round-robin selection ensuring diversity
+        diverse_results = []
+        doc_indices = {doc: 0 for doc in doc_chunks}
+        docs = list(doc_chunks.keys())
+        
+        while len(diverse_results) < top_k and any(doc_indices[d] < len(doc_chunks[d]) for d in docs):
+            for doc_name in docs:
+                if len(diverse_results) >= top_k:
+                    break
+                idx = doc_indices[doc_name]
+                if idx < len(doc_chunks[doc_name]):
+                    diverse_results.append(doc_chunks[doc_name][idx])
+                    doc_indices[doc_name] += 1
+        
+        # Final sort by score while maintaining some diversity
+        diverse_results.sort(key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"Document diversity: Selected {len(diverse_results)} chunks from {len(docs)} documents")
+        return diverse_results
     
     def _detect_query_type(self, question: str) -> str:
         """Detect the type of query to optimize search strategy."""
         question_lower = question.lower()
         
-        # Comparative queries
+        # Comparative queries (explicit comparison language)
         comparative_indicators = [
             'compare', 'comparison', 'versus', 'vs', 'difference', 'differences',
             'contrast', 'similar', 'different', 'better', 'worse', 'advantages',
@@ -596,9 +649,8 @@ class RAGEngine:
                 # Extract actual document name from metadata
                 doc_name = self._extract_document_name(metadata)
                 
-                # Create detailed context with document name and preview
-                chunk_preview = chunk[:300] + "..." if len(chunk) > 300 else chunk
-                context_parts.append(f"📄 {doc_name} • {similarity:.1%} match\n\n{chunk_preview}")
+                # Use full chunk content for LLM context (not truncated preview)
+                context_parts.append(f"📄 Document: {doc_name} (Relevance: {similarity:.1%})\n\n{chunk}")
                 
                 # Create enhanced source entry
                 source_entry = self._format_source_entry(i, chunk, similarity, metadata)
@@ -714,6 +766,8 @@ Critical Instructions:
 6. If no relevant information is found, state "I cannot find information about this question in the provided documents."
 7. When the context contains conditions, requirements, or step-by-step processes, present them clearly in your answer
 8. Reference specific document sections or pages when available in the metadata
+9. IMPORTANT: When the question involves multiple topics (e.g., loans AND notice period), synthesize information from ALL relevant document sections provided
+10. Look for both direct answers AND related policies that may apply to the situation
 
 Provide a comprehensive and well-structured answer:
 

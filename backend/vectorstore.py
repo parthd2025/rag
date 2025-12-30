@@ -230,6 +230,24 @@ class FAISSVectorStore:
                                     self.embedding_model.fit(self.chunks)
                                     self._is_fitted = True
                                     logger.info(f"TF-IDF model fitted on {len(self.chunks)} existing chunks")
+                                    
+                                    # CRITICAL: Rebuild FAISS index with new TF-IDF embeddings
+                                    # The old index may have different dimensions
+                                    logger.info("Rebuilding FAISS index with fresh TF-IDF embeddings...")
+                                    embeddings = self.embedding_model.transform(self.chunks).toarray()
+                                    embeddings = np.array(embeddings, dtype=np.float32)
+                                    
+                                    # Normalize embeddings
+                                    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+                                    norms[norms == 0] = 1
+                                    embeddings = embeddings / norms
+                                    
+                                    # Update embedding dimension and create new index
+                                    self.embedding_dim = embeddings.shape[1]
+                                    self.index = faiss.IndexFlatIP(self.embedding_dim)
+                                    self.index.add(embeddings)
+                                    logger.info(f"FAISS index rebuilt: {self.index.ntotal} vectors, dim={self.embedding_dim}")
+                                    
                                 except Exception as e:
                                     logger.warning(f"Could not fit TF-IDF on existing chunks: {e}")
                                     self._is_fitted = False

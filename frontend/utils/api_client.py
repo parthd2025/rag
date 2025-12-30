@@ -115,8 +115,7 @@ class APIClient:
         """Submit question and get answer with sources, optionally with streaming."""
         payload = {
             "question": question,
-            "top_k": top_k,
-            "stream": stream
+            "top_k": top_k
         }
         
         try:
