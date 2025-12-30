@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     
     # Server Configuration
     API_HOST: str = Field("0.0.0.0", env="API_HOST")
-    API_PORT: int = Field(8001, env="API_PORT")
+    API_PORT: int = Field(8000, env="API_PORT")
     FRONTEND_PORT: int = Field(8501, env="FRONTEND_PORT")
-    API_URL: str = Field("http://localhost:8001", env="API_URL")
+    API_URL: str = Field("http://localhost:8000", env="API_URL")
     
     # Model Configuration
     EMBEDDING_MODEL: str = Field("all-MiniLM-L6-v2", env="EMBEDDING_MODEL")

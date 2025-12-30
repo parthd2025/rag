@@ -44,7 +44,7 @@ def render_chat_interface(api_client, config):
     render_chat_input(api_client, config)
     
     # Follow-up suggestions
-    render_follow_up_suggestions(api_client)
+    render_follow_up_suggestions(api_client, config)
 
 
 def render_conversation_history():
@@ -292,7 +292,7 @@ def process_question(api_client, config, question: str):
             st.session_state.chat_messages.append(error_msg)
 
 
-def render_follow_up_suggestions(api_client):
+def render_follow_up_suggestions(api_client, config):
     """Render follow-up question suggestions based on conversation."""
     
     if len(st.session_state.chat_messages) < 2:  # Need at least one Q&A pair
@@ -362,9 +362,9 @@ def generate_contextual_suggestions() -> List[str]:
             "What resources are needed for this?"
         ])
     
-    # Combine suggestions (only if we have actual documents)
+    # Combine suggestions (show if we have conversation history)
     all_suggestions = []
-    if documents_info:
+    if st.session_state.conversation_history:
         all_suggestions = doc_specific[:2] + cross_doc[:2] + contextual[:2]
     
     # Return up to 4 suggestions

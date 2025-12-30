@@ -12,7 +12,7 @@ env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 
 # API Configuration
-API_URL = os.getenv("API_URL", "http://localhost:8001")
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "180"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 

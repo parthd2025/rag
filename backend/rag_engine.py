@@ -229,6 +229,8 @@ class RAGEngine:
         
         logger.info(f"Document boosting: {len(m2_results)} M2 results, {len(other_results)} other results")
         return boosted_results[:top_k]
+
+    def _hybrid_search(self, question: str, top_k: int) -> List[Tuple[str, float, dict]]:
         """Perform hybrid search combining semantic and keyword search."""
         logger.info(f"Performing hybrid search: semantic_weight={self.semantic_weight}, keyword_weight={self.keyword_weight}")
         
