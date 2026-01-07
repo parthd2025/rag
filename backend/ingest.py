@@ -306,7 +306,7 @@ class DocumentIngestor:
             return ""
     
     def _extract_csv(self, file_path: str) -> str:
-        """Extract text from CSV file with table structure preservation."""
+        """Extract text from CSV file with hybrid row/column format."""
         try:
             import pandas as pd
             
@@ -325,16 +325,28 @@ class DocumentIngestor:
                 return ""
             
             text = f"CSV File: {Path(file_path).name}\n\n"
-            text += "Headers: " + " | ".join(df.columns.astype(str)) + "\n\n"
             
-            chunk_rows = 100
-            for i in range(0, len(df), chunk_rows):
-                chunk_df = df.iloc[i:i+chunk_rows]
-                for _, row in chunk_df.iterrows():
-                    row_text = " | ".join(str(val) if pd.notna(val) else "" for val in row)
-                    text += row_text + "\n"
+            # Include column letters with headers (compact format)
+            columns = df.columns.astype(str).tolist()
+            column_letters = [chr(65 + i) if i < 26 else f"Col{i+1}" for i in range(len(columns))]
+            text += "Columns: " + " | ".join([f"{letter}:{name}" for letter, name in zip(column_letters, columns)]) + "\n\n"
             
-            logger.debug(f"Extracted {len(df)} rows from CSV: {file_path}")
+            # Extract rows with compact row references [R#]
+            for idx, row in df.iterrows():
+                row_num = idx + 2  # +2 because CSV row 1 is headers, pandas is 0-indexed
+                row_data = []
+                for val in row:
+                    if pd.notna(val) and str(val).strip():
+                        row_data.append(str(val))
+                
+                if row_data:
+                    text += f"[R{row_num}] " + " | ".join(row_data) + "\n"
+                
+                # Repeat column headers every 25 rows for chunk context
+                if (idx + 1) % 25 == 0 and idx > 0:
+                    text += "\n[Columns: " + " | ".join(columns) + "]\n\n"
+            
+            logger.debug(f"Extracted {len(df)} rows from CSV with hybrid format: {file_path}")
             return text.strip()
             
         except ImportError:
@@ -345,9 +357,10 @@ class DocumentIngestor:
             return ""
     
     def _extract_excel(self, file_path: str) -> str:
-        """Extract text from Excel (.xlsx) file with multiple sheets."""
+        """Extract text from Excel (.xlsx) file with hybrid row/column format."""
         try:
             import openpyxl
+            from openpyxl.utils import get_column_letter
             
             text = f"Excel File: {Path(file_path).name}\n\n"
             workbook = openpyxl.load_workbook(file_path, data_only=True)
@@ -356,19 +369,32 @@ class DocumentIngestor:
                 sheet = workbook[sheet_name]
                 text += f"\n=== Sheet: {sheet_name} ===\n\n"
                 
+                # Extract headers with column letters (compact format)
                 if sheet.max_row > 0:
                     headers = []
-                    for cell in sheet[1]:
-                        headers.append(str(cell.value) if cell.value else "")
-                    if any(headers):
-                        text += "Headers: " + " | ".join(headers) + "\n\n"
+                    for col_idx, cell in enumerate(sheet[1], start=1):
+                        col_letter = get_column_letter(col_idx)
+                        header = str(cell.value) if cell.value else f"Col_{col_letter}"
+                        headers.append((col_letter, header))
+                    
+                    if headers:
+                        text += "Columns: " + " | ".join([f"{letter}:{name}" for letter, name in headers]) + "\n\n"
                 
+                # Extract data rows with compact row references [R#]
                 for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-                    row_text = " | ".join(str(val) if val is not None else "" for val in row)
-                    if row_text.strip():
-                        text += row_text + "\n"
+                    row_data = []
+                    for i, val in enumerate(row):
+                        if i < len(headers) and val is not None and str(val).strip():
+                            row_data.append(str(val))
+                    
+                    if row_data:
+                        text += f"[R{row_idx}] " + " | ".join(row_data) + "\n"
+                    
+                    # Repeat column headers every 25 rows for chunk context
+                    if (row_idx - 1) % 25 == 0 and row_idx > 2:
+                        text += "\n[Columns: " + " | ".join([h[1] for h in headers]) + "]\n\n"
             
-            logger.debug(f"Extracted Excel file with {len(workbook.sheetnames)} sheets: {file_path}")
+            logger.debug(f"Extracted Excel file with {len(workbook.sheetnames)} sheets with hybrid format: {file_path}")
             return text.strip()
             
         except ImportError:
@@ -563,6 +589,11 @@ class DocumentIngestor:
             if not stripped:
                 return "blank"
 
+            # Table row detection FIRST (before kv detection)
+            # Check for Excel/CSV row format: [R#] or [Columns: ...]
+            if re.match(r'^\[R\d+\]', stripped) or stripped.startswith('[Columns:'):
+                return "table"
+
             # Heading detection: markdown-style or uppercase titles
             if stripped.startswith("#") or stripped.startswith("==") or stripped.startswith("--"):
                 return "heading"
@@ -708,15 +739,35 @@ class DocumentIngestor:
             return chunk_long_text(block_text)
 
         def chunk_table_block(block_lines: List[str]) -> List[str]:
-            """Keep table structure; split by row count + char length."""
-            max_rows = 25
+            """Keep table structure; split by row count + char length with header preservation."""
+            # Adaptive max_rows based on line verbosity
+            if block_lines:
+                avg_line_length = sum(len(l) for l in block_lines) / len(block_lines)
+                if avg_line_length > 100:
+                    max_rows = 10  # Verbose format
+                elif avg_line_length > 60:
+                    max_rows = 15
+                else:
+                    max_rows = 25  # Compact format
+            else:
+                max_rows = 25
+            
             chunks_local: List[str] = []
             current_rows: List[str] = []
+            
+            # Extract header line (Columns: ...) if present
+            header_line = None
+            data_lines = block_lines
+            if block_lines and block_lines[0].strip().startswith('Columns:'):
+                header_line = block_lines[0]
+                data_lines = block_lines[1:]
 
             def flush_rows():
                 nonlocal current_rows
                 if current_rows:
-                    joined = "\n".join(current_rows).strip()
+                    # Prepend header to each chunk for context
+                    chunk_lines = [header_line] + current_rows if header_line else current_rows
+                    joined = "\n".join(chunk_lines).strip()
                     if joined:
                         # if very large, fall back to generic chunker
                         if len(joined) > self.chunk_size * 2:
@@ -725,7 +776,7 @@ class DocumentIngestor:
                             chunks_local.append(joined)
                 current_rows = []
 
-            for row in block_lines:
+            for row in data_lines:
                 current_rows.append(row)
                 if len(current_rows) >= max_rows:
                     flush_rows()

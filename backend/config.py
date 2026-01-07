@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     
     # Model Configuration
     EMBEDDING_MODEL: str = Field("all-MiniLM-L6-v2", env="EMBEDDING_MODEL")
+    EMBEDDING_MODE: str = Field("neural", env="EMBEDDING_MODE")  # "neural" or "tfidf"
     LLM_MODEL: str = Field("llama-3.3-70b-versatile", env="LLM_MODEL")
     LLM_PROVIDER: str = Field("groq", env="LLM_PROVIDER")
     

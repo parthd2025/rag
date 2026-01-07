@@ -1,5 +1,5 @@
 """
-FAISS-based vector store for RAG system with TF-IDF local embeddings.
+FAISS-based vector store for RAG system with neural or TF-IDF embeddings.
 """
 
 import os
@@ -16,14 +16,31 @@ from .logger_config import logger
 from functools import lru_cache
 
 
-# Local embedding using TF-IDF (no downloads needed)
+# Cached embedding models
 @lru_cache(maxsize=1)
-def _get_embedding_model(model_name: str):
-    """Get cached TF-IDF vectorizer for local embeddings."""
+def _get_neural_model(model_name: str):
+    """Get cached neural embedding model (SentenceTransformer)."""
+    try:
+        from sentence_transformers import SentenceTransformer
+        logger.info(f"Loading SentenceTransformer model: {model_name}")
+        model = SentenceTransformer(model_name)
+        logger.info(f"✓ Neural model loaded successfully (dim={model.get_sentence_embedding_dimension()})")
+        return model
+    except ImportError:
+        logger.error("sentence-transformers not installed. Install with: pip install sentence-transformers")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load neural model: {e}")
+        raise
+
+
+@lru_cache(maxsize=1)
+def _get_tfidf_model(model_name: str):
+    """Get cached TF-IDF vectorizer for local embeddings (fallback)."""
     return TfidfVectorizer(
-        max_features=1000,  # Reasonable feature count
+        max_features=1000,
         stop_words='english',
-        ngram_range=(1, 2),  # Include bigrams
+        ngram_range=(1, 2),
         min_df=1,
         max_df=0.95
     )
@@ -54,20 +71,31 @@ class FAISSVectorStore:
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Load local embedding model (no downloads)
-        try:
-            logger.info(f"Initializing local TF-IDF embeddings (model: {embedding_model_name})")
-            self.embedding_model = _get_embedding_model(embedding_model_name)
+        # Load embedding model based on config setting
+        from .config import settings
+        self.embedding_mode = getattr(settings, 'EMBEDDING_MODE', 'neural')
+        
+        if self.embedding_mode == "neural":
+            try:
+                logger.info(f"Using neural embeddings (SentenceTransformer): {embedding_model_name}")
+                self.encoder = _get_neural_model(embedding_model_name)
+                self.embedding_dim = self.encoder.get_sentence_embedding_dimension()
+                self._is_fitted = True  # Neural models don't need fitting
+                logger.info(f"✓ Neural embeddings ready (dim={self.embedding_dim})")
+            except Exception as e:
+                logger.warning(f"Neural embeddings failed, falling back to TF-IDF: {e}")
+                self.embedding_mode = "tfidf"
+        
+        if self.embedding_mode == "tfidf":
+            logger.info(f"Using TF-IDF embeddings (legacy mode)")
+            self.embedding_model = _get_tfidf_model(embedding_model_name)
             self.embedding_dim = None  # Will be set after first fitting
-            self._is_fitted = False  # Track if vectorizer is fitted
-            logger.info(f"Local embedding model ready: dimension will be determined after first fit")
-        except Exception as e:
-            logger.error(f"Failed to initialize embedding model: {e}")
-            raise
+            self._is_fitted = False
+            logger.info(f"TF-IDF embedding model ready (requires fitting)")
         
         self.index: Optional[faiss.Index] = None
         self.chunks: List[str] = []
-        self.metadata: List[dict] = []  # Store metadata for each chunk: {source_doc, chunk_index, timestamp}
+        self.metadata: List[dict] = []
         self._load_or_create_index()
 
     def reload_from_disk(self) -> int:
@@ -197,9 +225,16 @@ class FAISSVectorStore:
                 logger.info(f"Loading existing index from {self.index_path}")
                 self.index = faiss.read_index(str(self.index_path))
                 
-                # Set embedding dimension from loaded index
-                self.embedding_dim = self.index.d
-                logger.info(f"Set embedding dimension to {self.embedding_dim} from loaded index")
+                # Verify embedding dimension matches
+                if self.embedding_dim and self.index.d != self.embedding_dim:
+                    logger.warning(
+                        f"Index dimension ({self.index.d}) doesn't match model dimension ({self.embedding_dim}). "
+                        f"Need re-indexing."
+                    )
+                    self.index = None
+                else:
+                    self.embedding_dim = self.index.d
+                    logger.info(f"✓ Loaded index with {self.index.ntotal} vectors (dim={self.embedding_dim})")
                 
                 # Load metadata
                 if self.metadata_path.exists():
@@ -210,71 +245,47 @@ class FAISSVectorStore:
                             self.metadata = data.get('metadata', [])
                         
                         # Verify chunk count matches index
-                        if len(self.chunks) != self.index.ntotal:
+                        if self.index and len(self.chunks) != self.index.ntotal:
                             logger.warning(
                                 f"Chunk count ({len(self.chunks)}) doesn't match index size "
-                                f"({self.index.ntotal}). Resetting chunks."
+                                f"({self.index.ntotal}). Resetting."
                             )
                             self.chunks = []
                             self.metadata = []
+                            self.index = None
                         else:
                             # If metadata is missing, create default entries
                             if len(self.metadata) != len(self.chunks):
                                 logger.info(f"Regenerating metadata for {len(self.chunks)} chunks")
                                 self.metadata = [{"source_doc": "unknown", "chunk_index": i} for i in range(len(self.chunks))]
                             
-                            # Only mark as fitted if we have chunks to work with
-                            if len(self.chunks) > 0:
-                                # Try to fit the TF-IDF model on existing chunks
+                            # For TF-IDF mode, fit on existing chunks
+                            if self.embedding_mode == "tfidf" and len(self.chunks) > 0:
                                 try:
+                                    logger.info("Fitting TF-IDF model on existing chunks...")
                                     self.embedding_model.fit(self.chunks)
                                     self._is_fitted = True
-                                    logger.info(f"TF-IDF model fitted on {len(self.chunks)} existing chunks")
-                                    
-                                    # CRITICAL: Rebuild FAISS index with new TF-IDF embeddings
-                                    # The old index may have different dimensions
-                                    logger.info("Rebuilding FAISS index with fresh TF-IDF embeddings...")
-                                    embeddings = self.embedding_model.transform(self.chunks).toarray()
-                                    embeddings = np.array(embeddings, dtype=np.float32)
-                                    
-                                    # Normalize embeddings
-                                    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-                                    norms[norms == 0] = 1
-                                    embeddings = embeddings / norms
-                                    
-                                    # Update embedding dimension and create new index
-                                    self.embedding_dim = embeddings.shape[1]
-                                    self.index = faiss.IndexFlatIP(self.embedding_dim)
-                                    self.index.add(embeddings)
-                                    logger.info(f"FAISS index rebuilt: {self.index.ntotal} vectors, dim={self.embedding_dim}")
-                                    
+                                    logger.info(f"✓ TF-IDF fitted on {len(self.chunks)} chunks")
                                 except Exception as e:
-                                    logger.warning(f"Could not fit TF-IDF on existing chunks: {e}")
+                                    logger.warning(f"Could not fit TF-IDF: {e}")
                                     self._is_fitted = False
-                            else:
-                                self._is_fitted = False
-                                logger.info("No existing chunks found, TF-IDF model not fitted yet")
                                 
-                            logger.info(f"Loaded index with {len(self.chunks)} chunks and metadata")
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Error parsing metadata JSON: {e}")
-                        self.chunks = []
-                        self.metadata = []
+                            logger.info(f"✓ Loaded {len(self.chunks)} chunks with metadata")
                     except Exception as e:
                         logger.error(f"Error loading metadata: {e}", exc_info=True)
                         self.chunks = []
                         self.metadata = []
                 else:
-                    logger.warning("Metadata file not found, starting with empty chunks")
+                    logger.warning("Metadata file not found")
                     self.chunks = []
                     self.metadata = []
             except Exception as e:
-                logger.error(f"Error loading index: {e}. Will create new index when embedding dimension is known.", exc_info=True)
+                logger.error(f"Error loading index: {e}", exc_info=True)
                 self.index = None
                 self.chunks = []
                 self.metadata = []
         else:
-            logger.info("No existing index found or embedding dimension not set. Will create index when needed.")
+            logger.info("No existing index found. Will create when needed.")
             self.index = None
             self.chunks = []
             self.metadata = []
@@ -304,56 +315,73 @@ class FAISSVectorStore:
         logger.info(f"ADD_CHUNKS STEP 1 COMPLETE: {len(chunks)} chunk(s) validated")
         
         try:
-            # Step 2: Generate TF-IDF embeddings
+            # Step 2: Generate embeddings
             logger.info(f"ADD_CHUNKS STEP 2: Generating embeddings for {len(chunks)} chunks")
             
-            if not self._is_fitted:
-                # Fit on all existing chunks + new chunks
-                all_texts = self.chunks + chunks
-                self.embedding_model.fit(all_texts)
-                self._is_fitted = True
+            if self.embedding_mode == "neural":
+                # Neural embeddings (SentenceTransformer)
+                embeddings = self.encoder.encode(
+                    chunks,
+                    normalize_embeddings=True,
+                    batch_size=32,
+                    show_progress_bar=False,
+                    convert_to_numpy=True
+                )
+                embeddings = np.array(embeddings, dtype=np.float32)
+                logger.info(f"✓ Neural embeddings generated (shape: {embeddings.shape})")
                 
-                # Set the actual embedding dimension after fitting
-                test_embedding = self.embedding_model.transform(["test"]).toarray()
-                self.embedding_dim = test_embedding.shape[1]
-                logger.info(f"TF-IDF vectorizer fitted on corpus, embedding_dim set to {self.embedding_dim}")
+            else:
+                # TF-IDF embeddings (legacy)
+                if not self._is_fitted:
+                    # Fit on all existing chunks + new chunks
+                    all_texts = self.chunks + chunks
+                    self.embedding_model.fit(all_texts)
+                    self._is_fitted = True
+                    
+                    # Set the actual embedding dimension after fitting
+                    test_embedding = self.embedding_model.transform(["test"]).toarray()
+                    self.embedding_dim = test_embedding.shape[1]
+                    logger.info(f"TF-IDF vectorizer fitted, embedding_dim={self.embedding_dim}")
+                    
+                    # Create index now that we know the dimension
+                    if self.index is None:
+                        self.index = faiss.IndexFlatIP(self.embedding_dim)
+                        logger.info(f"Created new FAISS index (dim={self.embedding_dim})")
                 
-                # Create index now that we know the dimension
-                if self.index is None:
-                    self.index = faiss.IndexFlatIP(self.embedding_dim)
-                    logger.info(f"Created new FAISS index with dimension {self.embedding_dim}")
+                embeddings = self.embedding_model.transform(chunks).toarray()
+                embeddings = np.array(embeddings, dtype=np.float32)
+                
+                # Normalize embeddings for cosine similarity
+                norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+                norms[norms == 0] = 1
+                embeddings = embeddings / norms
+                
+                logger.info(f"✓ TF-IDF embeddings generated (shape: {embeddings.shape})")
             
-            embeddings = self.embedding_model.transform(chunks).toarray()
-            embeddings = np.array(embeddings, dtype=np.float32)
+            # Step 3: Create index if needed
+            if self.index is None:
+                self.index = faiss.IndexFlatIP(self.embedding_dim)
+                logger.info(f"Created new FAISS index (dim={self.embedding_dim})")
             
-            # Normalize embeddings for cosine similarity
-            norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-            norms[norms == 0] = 1  # Avoid division by zero
-            embeddings = embeddings / norms
-            
-            logger.info(f"ADD_CHUNKS STEP 2 COMPLETE: Embeddings generated and normalized (shape: {embeddings.shape})")
-            
-            # Step 3: Validate embeddings shape
+            # Step 4: Validate embeddings shape
             if embeddings.shape[1] != self.embedding_dim:
-                logger.error(f"ADD_CHUNKS STEP 3 FAILED: Dimension mismatch ({embeddings.shape[1]} vs {self.embedding_dim})")
+                logger.error(f"Dimension mismatch: {embeddings.shape[1]} vs {self.embedding_dim}")
                 raise ValueError(
                     f"Embedding dimension mismatch: expected {self.embedding_dim}, "
                     f"got {embeddings.shape[1]}"
                 )
-            logger.info(f"ADD_CHUNKS STEP 3 COMPLETE: Embeddings shape validated")
             
-            # Step 4: Add to index and track metadata
-            logger.info(f"ADD_CHUNKS STEP 4: Adding embeddings to FAISS index")
+            # Step 5: Add to index and track metadata
+            logger.info(f"ADD_CHUNKS STEP 5: Adding embeddings to FAISS index")
             self.index.add(embeddings)
             start_index = len(self.chunks)
             self.chunks.extend(chunks)
             
-            # Store enhanced metadata for each chunk with source document and page info
+            # Store enhanced metadata for each chunk
             import re
-            from datetime import datetime
             
             for chunk_index, chunk in enumerate(chunks):
-                # Extract page number from chunk if available (from PDF markers)
+                # Extract page number from chunk if available
                 page_match = re.search(r'\[PAGE (\d+)\]', chunk)
                 page_num = int(page_match.group(1)) if page_match else None
                 
@@ -371,19 +399,20 @@ class FAISSVectorStore:
                     "page": page_num,
                     "section": section.strip() if section else None,
                     "preview": preview_text,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
+                    "embedding_mode": self.embedding_mode
                 }
                 self.metadata.append(chunk_metadata)
             
-            logger.info(f"ADD_CHUNKS STEP 4 COMPLETE: Added to index (total chunks: {len(self.chunks)})")
+            logger.info(f"ADD_CHUNKS STEP 5 COMPLETE: Added to index (total: {len(self.chunks)} chunks)")
             
-            # Step 5: Save index
-            logger.info("ADD_CHUNKS STEP 5: Saving index to disk")
+            # Step 6: Save index
+            logger.info("ADD_CHUNKS STEP 6: Saving index to disk")
             self._save_index()
-            logger.info(f"ADD_CHUNKS STEP 5 COMPLETE: Index saved")
+            logger.info(f"ADD_CHUNKS STEP 6 COMPLETE: Index saved")
             logger.info(f"=== add_chunks flow COMPLETE: {len(chunks)} chunks from '{document_name}' ===")
         except Exception as e:
-            logger.error(f"ADD_CHUNKS FAILED: Error adding chunks: {e}", exc_info=True)
+            logger.error(f"ADD_CHUNKS FAILED: {e}", exc_info=True)
             raise
     
     def search(self, query: str, top_k: int = 5) -> List[Tuple[str, float, dict]]:
@@ -412,22 +441,33 @@ class FAISSVectorStore:
         logger.debug(f"SEARCH STEP 2 COMPLETE: Query validated ({len(query)} chars)")
         
         try:
-            # Step 3: Generate query embedding using TF-IDF
+            # Step 3: Generate query embedding
             logger.debug("SEARCH STEP 3: Generating query embedding")
             
-            if not self._is_fitted:
-                logger.warning("TF-IDF not fitted yet, using simple fallback")
-                return []
+            if self.embedding_mode == "neural":
+                # Neural embeddings
+                query_emb = self.encoder.encode(
+                    [query],
+                    normalize_embeddings=True,
+                    convert_to_numpy=True
+                )
+                query_emb = np.array(query_emb, dtype=np.float32)
+                logger.debug(f"✓ Neural query embedding generated (shape: {query_emb.shape})")
                 
-            query_emb = self.embedding_model.transform([query]).toarray()
-            query_emb = np.array(query_emb, dtype=np.float32)
-            
-            # Normalize query embedding
-            norm = np.linalg.norm(query_emb)
-            if norm > 0:
-                query_emb = query_emb / norm
-            faiss.normalize_L2(query_emb)
-            logger.debug(f"SEARCH STEP 3 COMPLETE: Embedding generated and normalized (shape: {query_emb.shape})")
+            else:
+                # TF-IDF embeddings
+                if not self._is_fitted:
+                    logger.warning("TF-IDF not fitted yet")
+                    return []
+                    
+                query_emb = self.embedding_model.transform([query]).toarray()
+                query_emb = np.array(query_emb, dtype=np.float32)
+                
+                # Normalize query embedding
+                norm = np.linalg.norm(query_emb)
+                if norm > 0:
+                    query_emb = query_emb / norm
+                logger.debug(f"✓ TF-IDF query embedding generated (shape: {query_emb.shape})")
             
             # Step 4: Search index
             k = min(top_k, len(self.chunks))
@@ -444,15 +484,9 @@ class FAISSVectorStore:
                 if 0 <= idx < len(self.chunks):
                     idx_int = int(idx)
                     
-                    # Improved similarity calculation based on metric type
-                    if hasattr(self.index, 'metric_type') and self.index.metric_type == faiss.METRIC_INNER_PRODUCT:
-                        # For normalized vectors with inner product, dist is cosine similarity [-1, 1]
-                        # Convert to [0, 1] range: (cosine_sim + 1) / 2
-                        similarity = float(max(0.0, min(1.0, (dist + 1.0) / 2.0)))
-                    else:
-                        # For L2 distance, convert to similarity score
-                        # Higher distance = lower similarity
-                        similarity = float(max(0.0, min(1.0, 1.0 / (1.0 + dist))))
+                    # For inner product on normalized vectors, dist is cosine similarity
+                    # Convert to [0, 1] range
+                    similarity = float(max(0.0, min(1.0, (dist + 1.0) / 2.0)))
                     
                     # Include metadata for backtracking
                     chunk_metadata = self.metadata[idx_int] if idx_int < len(self.metadata) else {"source_doc": "unknown"}
@@ -467,7 +501,7 @@ class FAISSVectorStore:
             logger.info(f"SEARCH COMPLETE: Returned {len(results)} result(s) with metadata")
             return results
         except Exception as e:
-            logger.error(f"SEARCH FAILED: Error during search: {e}", exc_info=True)
+            logger.error(f"SEARCH FAILED: {e}", exc_info=True)
             return []
     
     def clear(self) -> None:
