@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RAG + Docling Integration Workflow</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;margin:28px}
+    h1,h2{color:#0b3954}
+    pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}
+    code{background:#eef; padding:2px 4px;border-radius:4px}
+    .box{border:1px solid #e1e4e8;padding:14px;border-radius:8px;margin:8px 0}
+    nav{margin-bottom:18px}
+    a{color:#0366d6}
+  </style>
+</head>
+<body>
+  <h1>RAG + Docling Integration Workflow</h1>
+  <p>Concise, single-page reference describing the end-to-end pipeline, environment, and run commands for this repository.</p>
+
+  <nav>
+    <strong>Sections:</strong>
+    <a href="#overview">Overview</a> ·
+    <a href="#components">Components</a> ·
+    <a href="#dataflow">Data Flow</a> ·
+    <a href="#run">Run & Test</a> ·
+    <a href="#env">Environment</a> ·
+    <a href="#docker">Docker</a>
+  </nav>
+
+  <h2 id="overview">Overview</h2>
+  <div class="box">
+    <p>This project implements a Retrieval-Augmented Generation (RAG) pipeline enhanced by <strong>Docling.ai</strong> for document linking, semantic entity linking, and graph-based enrichment. Key goals:</p>
+    <ul>
+      <li>Preserve table structure and anchors from spreadsheets</li>
+      <li>Enrich chunks with Docling nodes (node_id, meta, links)</li>
+      <li>Index embeddings in FAISS with metadata and node graph edges</li>
+      <li>Perform hybrid retrieval (metadata filters + neural search) and graph reranking</li>
+    </ul>
+  </div>
+
+  <h2 id="components">Components</h2>
+  <div class="box">
+    <ul>
+      <li><strong>Ingest</strong>: `backend/ingest.py` — extract and chunk (table-aware).</li>
+      <li><strong>Docling client</strong>: `backend/docling_client.py` — send chunks, receive enriched nodes.</li>
+      <li><strong>Vector store</strong>: `backend/vectorstore.py` — FAISS index, stores `node_id` and `links` in metadata.</li>
+      <li><strong>Reranker</strong>: `backend/docling_reranker.py` — boosts connected results using Docling links.</li>
+      <li><strong>Example runner</strong>: `test_full_flow.py` — demonstrates ingestion → docling → index → search.</li>
+    </ul>
+  </div>
+
+  <h2 id="dataflow">Data Flow (step-by-step)</h2>
+  <div class="box">
+    <ol>
+      <li><strong>Ingest</strong>: Extract raw text and table structure from source (e.g., Excel). Keep anchors: sheet, row, column.</li>
+      <li><strong>Chunk</strong>: Create small chunks with contextual anchors and preview snippets.</li>
+      <li><strong>Docling enrichment</strong>: POST chunks to Docling API; receive nodes with <code>id</code>, <code>text</code>, <code>meta</code>, and <code>links</code>.</li>
+      <li><strong>Index</strong>: Embed enriched nodes (same embedding model), add vectors to FAISS and store metadata including <code>node_id</code> and <code>links</code>.</li>
+      <li><strong>Retrieve</strong>: On query, apply fast metadata filters, run semantic search over embeddings to get top candidates.</li>
+      <li><strong>Rerank</strong>: Expand candidates via Docling links (1-hop) and boost scores for connected evidence chains.</li>
+      <li><strong>Assemble answer</strong>: Aggregate top nodes, include provenance (source, sheet, row, node_id), and return to user or LLM prompt.
+      </li>
+    </ol>
+  </div>
+
+  <h2 id="run">Run & Test</h2>
+  <div class="box">
+    <p>Quick local run (Windows PowerShell):</p>
+    <pre><code># create venv (project root)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-dev.txt
+
+# set Docling API key (session)
+$env:DOCLING_API_KEY = 'your_docling_key'
+
+# run example
+python test_full_flow.py
+</code></pre>
+    <p>Or use the Docker image (see Docker section).</p>
+  </div>
+
+  <h2 id="env">Environment & Reproducibility</h2>
+  <div class="box">
+    <p>Files added for reproducibility:</p>
+    <ul>
+      <li><a href="../requirements-dev.txt">requirements-dev.txt</a> — pinned dependencies for development and CI.</li>
+      <li><a href="pipx_workflow.md">docs/pipx_workflow.md</a> — optional pipx workflow for isolated CLIs.</li>
+      <li><strong>Secrets</strong>: keep <code>DOCLING_API_KEY</code> outside the repo (env var or secret manager).</li>
+    </ul>
+  </div>
+
+  <h2 id="docker">Docker</h2>
+  <div class="box">
+    <p>Build and run:</p>
+    <pre><code>docker build -t rag-docling .
+docker run --rm -e DOCLING_API_KEY='your_key' rag-docling
+    </code></pre>
+    <p>The default container runs <code>python test_full_flow.py</code> as a smoke test.</p>
+  </div>
+
+  <h2 id="notes">Notes & Next Improvements</h2>
+  <div class="box">
+    <ul>
+      <li>Adjust <code>docling_client.py</code> normalization if Docling API returns a different JSON shape.</li>
+      <li>Persist the Docling graph separately (JSON/DB) for large graphs and multi-hop expansion.</li>
+      <li>Batch Docling uploads, add async workers, and cache embeddings for idempotency.</li>
+    </ul>
+  </div>
+
+  <h2 id="diagram">Flow Diagram (HTML)</h2>
+  <div class="box">
+    <p>Visual flow of the pipeline showing files and line counts (HTML layout):</p>
+    <div class="flow-grid" style="display:flex;flex-direction:column;gap:18px">
+      <div class="row" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="card" style="padding:12px;border:2px solid #2b6ea3;border-radius:8px;background:#fff;min-width:220px;">
+          <div style="font-weight:700;color:#0b3954">1. Ingest &amp; Extract</div>
+          <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px;">backend/ingest.py — 931 lines<br>_extract_excel, _chunk_text, load_and_process_documents</div>
+        </div>
+        <div style="font-size:28px;color:#666">→</div>
+        <div class="card" style="padding:12px;border:2px solid #2b6ea3;border-radius:8px;background:#fff;min-width:220px;">
+          <div style="font-weight:700;color:#0b3954">2. Chunking</div>
+          <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px;">(implemented in backend/ingest.py)<br>key: _chunk_text (pattern-aware)</div>
+        </div>
+        <div style="font-size:28px;color:#666">→</div>
+        <div class="card" style="padding:12px;border:2px solid #2b6ea3;border-radius:8px;background:#fff;min-width:260px;">
+          <div style="font-weight:700;color:#0b3954">3. Docling Enrichment</div>
+          <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px;">backend/docling_client.py — 99 lines<br>DoclingClient.enrich_chunks()</div>
+        </div>
+      </div>
+
+      <div class="row middle" style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">
+        <div class="card" style="padding:12px;border:2px solid #2b6ea3;border-radius:8px;background:#fff;min-width:320px;">
+          <div style="font-weight:700;color:#0b3954">4. Embed &amp; Index</div>
+          <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px;">backend/vectorstore.py — 702 lines<br>add_chunks(), _save_index(), search()</div>
+        </div>
+        <div class="card" style="padding:12px;border:2px solid #2b6ea3;border-radius:8px;background:#fff;min-width:320px;">
+          <div style="font-weight:700;color:#0b3954">5. Rerank using Docling links</div>
+          <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px;">backend/docling_reranker.py — 58 lines<br>rerank_using_links()</div>
+        </div>
+      </div>
+
+      <div class="row" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-size:28px;color:#666">↓</div>
+        <div class="card" style="padding:12px;border:2px solid #2b6ea3;border-radius:8px;background:#fff;min-width:420px;">
+          <div style="font-weight:700;color:#0b3954">6. Example Runner / Smoke Test</div>
+          <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px;">test_full_flow.py — 72 lines</div>
+        </div>
+      </div>
+
+      <div class="legend" style="background:#f8f9fb;border:1px solid #ddd;padding:10px;border-radius:6px">
+        <div style="font-weight:700;color:#0b3954">Legend &amp; Notes</div>
+        <div class="meta" style="font-family:monospace;font-size:13px;margin-top:6px">- Run order: 1 → 2 → 3 → 4 → 5 → 6<br>- Ensure env var DOCLING_API_KEY is set before step 3.<br>- Use the same embedding model for indexing &amp; queries (config in backend/config.py).<br>- Lines shown are file LOC; core execution paths are highlighted above.</div>
+      </div>
+    </div>
+  </div>
+
+  
+
+  <footer>
+    <p>Workflow document generated on: 2026-01-07</p>
+  </footer>
+</body>
+</html>

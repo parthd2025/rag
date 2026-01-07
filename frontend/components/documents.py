@@ -196,10 +196,12 @@ def render_document_stats(api_client):
                 )
             
             # Document list with enhanced details
-            if d.get("documents"):
+            active_docs = [doc for doc in d.get("documents", []) if doc.get('chunks', doc.get('chunk_count', 0)) > 0]
+            
+            if active_docs:
                 st.markdown("**📋 Document Library:**")
                 
-                for i, doc in enumerate(d.get("documents", [])[:10]):  # Show up to 10
+                for i, doc in enumerate(active_docs[:10]):  # Show up to 10
                     doc_name = doc.get('name', '?')
                     doc_chunks = doc.get('chunks', doc.get('chunk_count', 0))
                     upload_date = doc.get('upload_date', '')
@@ -216,8 +218,8 @@ def render_document_stats(api_client):
                     icon = get_file_icon(doc_name)
                     st.write(f"{icon} **{doc_name}** ({doc_chunks} chunks){date_str}")
                 
-                if len(d.get("documents", [])) > 10:
-                    remaining = len(d.get("documents", [])) - 10
+                if len(active_docs) > 10:
+                    remaining = len(active_docs) - 10
                     st.write(f"*...and {remaining} more documents*")
         else:
             st.info("📭 No documents uploaded yet. Use the upload section above to get started!")

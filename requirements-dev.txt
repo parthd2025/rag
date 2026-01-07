@@ -1,3 +1,33 @@
+# Development requirements for RAG project (use project venv before installing)
+# Pin versions where possible for reproducibility
+
+# Core project
+requests>=2.28.0
+pandas>=1.5.0
+openpyxl>=3.1.0
+pyyaml>=6.0
+
+# Embeddings & vector search
+sentence-transformers>=2.2.2
+faiss-cpu>=1.7.4  # use faiss-cpu for CPUs; on some platforms use conda for better compatibility
+scikit-learn>=1.2.0
+
+# Docling client
+docling>=0.1.0
+
+# Utilities
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+
+# Testing and linting
+pytest>=7.3.0
+pytest-cov>=4.0.0
+black>=24.3.0
+ruff>=0.0.0
+
+# Optional (for serving/testing API locally)
+uvicorn>=0.22.0
+fastapi>=0.95.0
 # Development dependencies
 pytest>=7.4.0
 pytest-cov>=4.1.0

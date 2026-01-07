@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RAG Operation Workflow — Detailed (Docling integration)</title>
+  <style>
+    body{font-family:Inter,Segoe UI,Arial,sans-serif;margin:24px;color:#111}
+    h1{font-size:20px;margin-bottom:4px}
+    h2{font-size:16px;margin-top:20px}
+    .step{border-left:4px solid #2b6cb0;padding:12px;margin:12px 0;background:#f8fafc}
+    .meta{font-size:13px;color:#555;margin-bottom:8px}
+    pre{background:#0b1220;color:#dbeafe;padding:12px;overflow:auto;border-radius:6px}
+    a.file{color:#1a73e8}
+  </style>
+</head>
+<body>
+  <h1>RAG Operation Workflow — 18 Steps (Docling + FAISS)</h1>
+  <p>This document maps the 18 core operations of the RAG pipeline to the code in this repository and includes minimal representative snippets and links to the source files.</p>
+
+  <!-- Step 1 -->
+  <div class="step">
+    <h2>1. Receive uploaded file (temporary save)</h2>
+    <div class="meta">File: <a class="file" href="backend/ingest.py#L840-L892">backend/ingest.py</a></div>
+    <pre>def process_uploaded_file(self, file_content: bytes, filename: str) -> Tuple[List[str], str, dict>:
+    # writes temp file, calls load_and_process_documents, then cleans up
+</pre>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step">
+    <h2>2. Load and process documents (validate + extract)</h2>
+    <div class="meta">File: <a class="file" href="backend/ingest.py#L82-L120">backend/ingest.py</a></div>
+    <pre>def load_and_process_documents(self, file_paths: List[str]) -> Tuple[List[str], str>:
+    # Validate file list, call _extract_text for each file, aggregate text and names
+</pre>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step">
+    <h2>3. Extract text by file type</h2>
+    <div class="meta">File: <a class="file" href="backend/ingest.py#L168-L214">backend/ingest.py</a></div>
+    <pre>def _extract_text(self, file_path: str) -> str:
+    # Chooses extractor based on file extension and returns raw text
+</pre>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="step">
+    <h2>4. Excel hybrid extraction (rows + headers)</h2>
+    <div class="meta">File: <a class="file" href="backend/ingest.py#L320-L372">backend/ingest.py</a></div>
+    <pre>def _extract_excel(self, file_path: str) -> str:
+    # Loads workbook, emits "Columns: A:Header | B:Header" and [R#] row lines
+</pre>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="step">
+    <h2>5. Pattern-aware chunking</h2>
+    <div class="meta">File: <a class="file" href="backend/ingest.py#L543-L720">backend/ingest.py</a></div>
+    <pre>def _chunk_text(self, text: str) -> List[str>:
+    # Classifies lines (table/kv/code/heading/list/paragraph) then chunk per-block
+</pre>
+  </div>
+
+  <!-- Step 6 -->
+  <div class="step">
+    <h2>6. Finalize chunk stats and return chunks</h2>
+    <div class="meta">File: <a class="file" href="backend/ingest.py#L840-L892">backend/ingest.py</a></div>
+    <pre># _chunk_text sets self.last_chunk_stats and returns the chunk list
+</pre>
+  </div>
+
+  <!-- Step 7 -->
+  <div class="step">
+    <h2>7. Enrich chunks with Docling.ai (node IDs & links)</h2>
+    <div class="meta">File: <a class="file" href="backend/docling_client.py#L1-L120">backend/docling_client.py</a></div>
+    <pre>class DoclingClient:
+    def enrich_chunks(self, chunks: List[Any], source: str = "unknown") -> List[Dict[str, Any]]:
+        # POSTs JSON payload of chunks to Docling endpoint and returns normalized nodes
+</pre>
+  </div>
+
+  <!-- Step 8 -->
+  <div class="step">
+    <h2>8. Normalize Docling response into nodes</h2>
+    <div class="meta">File: <a class="file" href="backend/docling_client.py#L40-L100">backend/docling_client.py</a></div>
+    <pre># Normalization in client: node = {"id":..., "text":..., "meta":..., "links":...}
+</pre>
+  </div>
+
+  <!-- Step 9 -->
+  <div class="step">
+    <h2>9. Add enriched chunks to FAISS vector store</h2>
+    <div class="meta">File: <a class="file" href="backend/vectorstore.py#L288-L336">backend/vectorstore.py</a></div>
+    <pre>def add_chunks(self, chunks: List[AnyType], document_name: str = "unknown") -> None:
+    # Normalizes inputs (dict or str) and prepares for embedding
+</pre>
+  </div>
+
+  <!-- Step 10 -->
+  <div class="step">
+    <h2>10. Generate embeddings (neural or TF-IDF fallback)</h2>
+    <div class="meta">File: <a class="file" href="backend/vectorstore.py#L316-L356">backend/vectorstore.py</a></div>
+    <pre># Neural: self.encoder.encode(..., normalize_embeddings=True)
+# TF-IDF: fit vectorizer and normalize vectors
+</pre>
+  </div>
+
+  <!-- Step 11 -->
+  <div class="step">
+    <h2>11. Persist metadata (merge Docling node_id & links)</h2>
+    <div class="meta">File: <a class="file" href="backend/vectorstore.py#L404-L480">backend/vectorstore.py</a></div>
+    <pre># For each input_obj: build chunk_metadata, merge provided_meta, set chunk_metadata["node_id"] and ["links"] if present
+</pre>
+  </div>
+
+  <!-- Step 12 -->
+  <div class="step">
+    <h2>12. Save FAISS index and metadata to disk</h2>
+    <div class="meta">File: <a class="file" href="backend/vectorstore.py#L664-L700">backend/vectorstore.py</a></div>
+    <pre>def _save_index(self) -> None:
+    # faiss.write_index(...) and write metadata json
+</pre>
+  </div>
+
+  <!-- Step 13 -->
+  <div class="step">
+    <h2>13. Query: embed query and retrieve candidates</h2>
+    <div class="meta">File: <a class="file" href="backend/vectorstore.py#L424-L520">backend/vectorstore.py</a></div>
+    <pre>def search(self, query: str, top_k: int = 5) -> List[Tuple[str, float, dict]]:
+    # Generate query embedding, call self.index.search(...), map indices -> chunks+metadata
+</pre>
+  </div>
+
+  <!-- Step 14 -->
+  <div class="step">
+    <h2>14. Docling-aware reranking (candidate expansion)</h2>
+    <div class="meta">File: <a class="file" href="backend/vectorstore.py#L547-L580">backend/vectorstore.py</a></div>
+    <pre>def search_with_docling(self, query: str, top_k: int = 5, expand_factor: int = 2):
+    # Get larger candidate set, call rerank_using_links, return top_k
+</pre>
+  </div>
+
+  <!-- Step 15 -->
+  <div class="step">
+    <h2>15. Reranker: boost connected nodes</h2>
+    <div class="meta">File: <a class="file" href="backend/docling_reranker.py#L1-L120">backend/docling_reranker.py</a></div>
+    <pre>def rerank_using_links(results, hops=1):
+    # Count how many top node_ids each result links to; new_score = score * (1 + 0.2 * connectivity)
+</pre>
+  </div>
+
+  <!-- Step 16 -->
+  <div class="step">
+    <h2>16. RAG retrieval with fallback & diversity</h2>
+    <div class="meta">File: <a class="file" href="backend/rag_engine.py#L400-L520">backend/rag_engine.py</a></div>
+    <pre># answer_query_with_context calls _retrieve_context_with_fallback which uses _hybrid_search and diversity logic
+</pre>
+  </div>
+
+  <!-- Step 17 -->
+  <div class="step">
+    <h2>17. Build adaptive prompt from retrieved context</h2>
+    <div class="meta">File: <a class="file" href="backend/rag_engine.py#L733-L780">backend/rag_engine.py</a></div>
+    <pre>def _build_prompt(self, question: str, context: str, avg_similarity: float = 1.0) -> str:
+    # Adds confidence instruction and critical instructions to the prompt
+</pre>
+  </div>
+
+  <!-- Step 18 -->
+  <div class="step">
+    <h2>18. Generate answer via LLM and verify</h2>
+    <div class="meta">Files: <a class="file" href="backend/llm_loader.py#L1-L120">backend/llm_loader.py</a>, <a class="file" href="backend/rag_engine.py#L560-L720">backend/rag_engine.py</a></div>
+    <pre># llm_engine.generate(prompt, max_tokens=..., temperature=...)
+# then _verify_answer_with_metadata(answer, sources, question)
+</pre>
+  </div>
+
+  <hr />
+  <p style="font-size:13px;color:#444">Notes: The snippets above are representative — open the linked files for exact lines and full context. For production hardening consider batching Docling calls, storing the Docling graph externally, and tuning the reranker weights/hops.</p>
+</body>
+</html>

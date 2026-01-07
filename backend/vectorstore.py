@@ -7,12 +7,13 @@ import json
 import numpy as np
 import faiss
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Any as AnyType
 from datetime import datetime, timezone
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from .logger_config import logger
+from .docling_reranker import rerank_using_links
 from functools import lru_cache
 
 
@@ -290,7 +291,7 @@ class FAISSVectorStore:
             self.chunks = []
             self.metadata = []
     
-    def add_chunks(self, chunks: List[str], document_name: str = "unknown") -> None:
+    def add_chunks(self, chunks: List[AnyType], document_name: str = "unknown") -> None:
         """
         Add chunks with embeddings to index with comprehensive logging.
         Removes existing chunks from the same document first to avoid duplicates.
@@ -308,20 +309,34 @@ class FAISSVectorStore:
             self.delete_document(document_name)
             logger.info(f"ADD_CHUNKS STEP 0 COMPLETE: Cleared previous version of document")
         
-        # Step 1: Validate chunks
+        # Step 1: Validate chunks and normalize input
         if not chunks:
             logger.warning("ADD_CHUNKS STEP 1 FAILED: No chunks provided")
             return
-        logger.info(f"ADD_CHUNKS STEP 1 COMPLETE: {len(chunks)} chunk(s) validated")
+
+        # Support either list of raw strings or list of dicts returned by Docling client
+        normalized_texts: List[str] = []
+        normalized_inputs: List[dict] = []
+        for i, c in enumerate(chunks):
+            if isinstance(c, dict):
+                text = c.get("text") or c.get("chunk") or ""
+                normalized_texts.append(text)
+                normalized_inputs.append(c)
+            else:
+                text = str(c)
+                normalized_texts.append(text)
+                normalized_inputs.append({"text": text})
+
+        logger.info(f"ADD_CHUNKS STEP 1 COMPLETE: {len(normalized_texts)} chunk(s) validated")
         
         try:
             # Step 2: Generate embeddings
-            logger.info(f"ADD_CHUNKS STEP 2: Generating embeddings for {len(chunks)} chunks")
+            logger.info(f"ADD_CHUNKS STEP 2: Generating embeddings for {len(normalized_texts)} chunks")
             
             if self.embedding_mode == "neural":
                 # Neural embeddings (SentenceTransformer)
                 embeddings = self.encoder.encode(
-                    chunks,
+                    normalized_texts,
                     normalize_embeddings=True,
                     batch_size=32,
                     show_progress_bar=False,
@@ -375,33 +390,58 @@ class FAISSVectorStore:
             logger.info(f"ADD_CHUNKS STEP 5: Adding embeddings to FAISS index")
             self.index.add(embeddings)
             start_index = len(self.chunks)
-            self.chunks.extend(chunks)
-            
+            # Store texts into chunks list (normalized_texts)
+            self.chunks.extend(normalized_texts)
+
             # Store enhanced metadata for each chunk
             import re
-            
-            for chunk_index, chunk in enumerate(chunks):
+
+            for chunk_index, input_obj in enumerate(normalized_inputs):
+                chunk_text = input_obj.get("text", "")
+
                 # Extract page number from chunk if available
-                page_match = re.search(r'\[PAGE (\d+)\]', chunk)
+                page_match = re.search(r'\[PAGE (\d+)\]', chunk_text)
                 page_num = int(page_match.group(1)) if page_match else None
-                
+
                 # Extract first heading/section if available
-                heading_match = re.search(r'^#+\s*(.+?)$|^([A-Z][A-Za-z\s]+:)', chunk, re.MULTILINE)
+                heading_match = re.search(r'^#+\s*(.+?)$|^([A-Z][A-Za-z\s]+:)', chunk_text, re.MULTILINE)
                 section = heading_match.group(1) or heading_match.group(2) if heading_match else None
-                
+
                 # Get preview (first 100 chars without page markers)
-                preview_text = re.sub(r'\[PAGE \d+\]', '', chunk).strip()[:100]
-                
+                preview_text = re.sub(r'\[PAGE \d+\]', '', chunk_text).strip()[:100]
+
+                # Base metadata (existing fields)
                 chunk_metadata = {
                     "source_doc": document_name,
                     "chunk_index": start_index + chunk_index,
-                    "chunk_length": len(chunk),
+                    "chunk_length": len(chunk_text),
                     "page": page_num,
                     "section": section.strip() if section else None,
                     "preview": preview_text,
                     "timestamp": datetime.now().isoformat(),
                     "embedding_mode": self.embedding_mode
                 }
+
+                # If input provided its own meta/node_id/links (from Docling), merge them
+                provided_meta = input_obj.get("meta") or input_obj.get("metadata") or {}
+                if provided_meta:
+                    # Merge but don't overwrite the base keys unless explicitly provided
+                    for k, v in provided_meta.items():
+                        if k not in chunk_metadata or chunk_metadata.get(k) is None:
+                            chunk_metadata[k] = v
+                        else:
+                            # keep both under a namespaced key
+                            chunk_metadata.setdefault("provided_meta", {})[k] = v
+
+                # Node id and links from enriched node
+                node_id = input_obj.get("id") or input_obj.get("node_id") or (provided_meta.get("node_id") if isinstance(provided_meta, dict) else None)
+                if node_id:
+                    chunk_metadata["node_id"] = node_id
+
+                links = input_obj.get("links") or provided_meta.get("links") if isinstance(provided_meta, dict) else input_obj.get("links") or []
+                if links:
+                    chunk_metadata["links"] = links
+
                 self.metadata.append(chunk_metadata)
             
             logger.info(f"ADD_CHUNKS STEP 5 COMPLETE: Added to index (total: {len(self.chunks)} chunks)")
@@ -503,6 +543,28 @@ class FAISSVectorStore:
         except Exception as e:
             logger.error(f"SEARCH FAILED: {e}", exc_info=True)
             return []
+
+    def search_with_docling(self, query: str, top_k: int = 5, expand_factor: int = 2) -> List[Tuple[str, float, dict]]:
+        """Search and rerank results using Docling links when available.
+
+        This method performs a regular search for a larger candidate set (top_k * expand_factor),
+        then applies a simple Docling-link-based reranker and returns the top_k results.
+        """
+        # Get a larger candidate set to allow reranking via links
+        candidate_k = max(top_k * expand_factor, top_k)
+        candidates = self.search(query, top_k=candidate_k)
+
+        if not candidates:
+            return []
+
+        # Use reranker which expects (text, score, metadata) entries
+        try:
+            reranked = rerank_using_links(candidates)
+            # Return top_k after rerank
+            return reranked[:top_k]
+        except Exception:
+            logger.exception("Docling rerank failed—returning original candidates")
+            return candidates[:top_k]
     
     def clear(self) -> None:
         """Clear vector store and reset index with logging."""
@@ -598,6 +660,27 @@ class FAISSVectorStore:
         except Exception as e:
             logger.error(f"DELETE_DOC FAILED: Error deleting document: {e}", exc_info=True)
             raise
+
+    def get_all_chunks_by_document(self, document_name: str) -> List[tuple]:
+        """
+        Retrieve ALL chunks from a specific document (for table-aware retrieval).
+        
+        Args:
+            document_name: Name of the document to retrieve
+            
+        Returns:
+            List of tuples: [(chunk_text, 1.0, metadata), ...]
+        """
+        logger.info(f"TABLE-AWARE: Retrieving all chunks from document '{document_name}'")
+        
+        results = []
+        for i, meta in enumerate(self.metadata):
+            if meta.get("source_doc") == document_name:
+                # Return with score 1.0 since we're not doing similarity ranking
+                results.append((self.chunks[i], 1.0, meta))
+        
+        logger.info(f"TABLE-AWARE: Retrieved {len(results)} chunks from '{document_name}'")
+        return results
     
     def _save_index(self) -> None:
         """Save index and metadata to disk."""

@@ -427,6 +427,10 @@ class RAGEngine:
         """
         logger.info(f"Retrieving context with enhanced search: top_k={self.top_k}, hybrid={self.enable_hybrid_search}")
         
+        # Step 0: Detect if this is a table/aggregation query
+        query_type = self._detect_query_type(question)
+        logger.info(f"Query type detected: {query_type}")
+        
         # Step 1: Always do initial broad search to understand document landscape
         if self.enable_hybrid_search:
             initial_results = self._hybrid_search(question, self.top_k * 2)
@@ -436,6 +440,26 @@ class RAGEngine:
         if not initial_results:
             logger.warning("No results found in initial retrieval")
             return [], 0.0
+        
+        # Step 1.5: For aggregation queries on tables, retrieve ALL chunks from the document
+        if query_type == "aggregation":
+            # Get the most relevant document from initial results
+            doc_relevance = self._analyze_document_relevance(initial_results)
+            if doc_relevance:
+                # Find document with highest average score
+                best_doc = max(doc_relevance.items(), key=lambda x: sum(x[1]) / len(x[1]))[0]
+                
+                # Check if this looks like structured data (table/Excel)
+                if self._is_structured_document(best_doc, initial_results):
+                    logger.info(f"🔢 TABLE-AWARE: Aggregation query detected on structured document '{best_doc}'")
+                    logger.info(f"🔢 TABLE-AWARE: Retrieving ALL chunks from '{best_doc}' for complete calculation")
+                    
+                    # Retrieve all chunks from this document
+                    all_chunks = self.vector_store.get_all_chunks_by_document(best_doc)
+                    
+                    if all_chunks:
+                        logger.info(f"🔢 TABLE-AWARE: Retrieved {len(all_chunks)} chunks for complete table processing")
+                        return all_chunks, 1.0  # Return all chunks with high confidence
         
         # Step 2: Analyze which documents are relevant (dynamic detection)
         doc_relevance = self._analyze_document_relevance(initial_results)
@@ -478,6 +502,41 @@ class RAGEngine:
                 logger.info(f"Fallback retrieval: {len(results)} results, avg_similarity: {avg_similarity:.4f}")
         
         return results, avg_similarity
+
+    def _is_structured_document(self, doc_name: str, sample_results: List[Tuple[str, float, dict]]) -> bool:
+        """
+        Determine if a document contains structured data (tables).
+        
+        Args:
+            doc_name: Document name to check
+            sample_results: Sample results to analyze content
+            
+        Returns:
+            True if document appears to be structured/tabular
+        """
+        # Check file extension
+        doc_lower = doc_name.lower()
+        if any(ext in doc_lower for ext in ['.xlsx', '.xls', '.csv', '.tsv']):
+            return True
+        
+        # Check content patterns - look for table indicators
+        table_indicators = ['===', '|', '[R', 'row', 'column', 'sheet:', 'table']
+        
+        for chunk, _, metadata in sample_results:
+            if self._extract_document_name(metadata) == doc_name:
+                chunk_lower = chunk.lower()
+                # If chunk has multiple table indicators, likely structured
+                indicator_count = sum(1 for indicator in table_indicators if indicator in chunk_lower)
+                if indicator_count >= 2:
+                    return True
+                
+                # Check for pipe-separated or bracket-notation rows
+                if '|' in chunk and chunk.count('|') > 5:
+                    return True
+                if '[R' in chunk and ']' in chunk:  # Row notation like [R1], [R2]
+                    return True
+        
+        return False
 
     def _analyze_document_relevance(self, results: List[Tuple[str, float, dict]]) -> Dict[str, List[float]]:
         """
@@ -535,6 +594,16 @@ class RAGEngine:
         """Detect the type of query to optimize search strategy."""
         question_lower = question.lower()
         
+        # Table/Aggregation queries (needs complete table data)
+        aggregation_indicators = [
+            'total', 'sum', 'count', 'average', 'mean', 'max', 'maximum', 'min', 'minimum',
+            'all', 'every', 'complete', 'entire', 'full list', 'how many', 'calculate',
+            'aggregate', 'group by', 'breakdown', 'distribution', 'statistics', 'stats'
+        ]
+        
+        if any(indicator in question_lower for indicator in aggregation_indicators):
+            return "aggregation"
+        
         # Comparative queries (explicit comparison language)
         comparative_indicators = [
             'compare', 'comparison', 'versus', 'vs', 'difference', 'differences',
@@ -574,6 +643,160 @@ class RAGEngine:
         
         return "general"
     
+    def _calculate_table_aggregation(self, question: str, results: List[Tuple[str, float, dict]]) -> Optional[Dict[str, Any]]:
+        """
+        Calculate aggregation directly from table data.
+        
+        Args:
+            question: User question containing aggregation request
+            results: Retrieved chunks with table data
+            
+        Returns:
+            Dict with 'value', 'count', 'summary' or None if calculation fails
+        """
+        question_lower = question.lower()
+        
+        # Detect filter criteria (e.g., "for New York", "where City = Chicago")
+        filter_value = None
+        filter_patterns = [
+            r'for\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',  # "for New York"
+            r'in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',   # "in Chicago"
+            r'where.*?=\s*["\']?([^"\']+)["\']?',       # "where City = 'New York'"
+        ]
+        
+        for pattern in filter_patterns:
+            match = re.search(pattern, question, re.IGNORECASE)
+            if match:
+                filter_value = match.group(1).strip()
+                break
+        
+        if not filter_value:
+            logger.warning("TABLE-CALC: No filter value detected in question")
+            return None
+        
+        logger.info(f"TABLE-CALC: Filter detected: '{filter_value}'")
+        
+        # Detect aggregation type and target column
+        agg_type = "sum"  # default
+        if any(w in question_lower for w in ['average', 'mean', 'avg']):
+            agg_type = "average"
+        elif any(w in question_lower for w in ['count', 'how many']):
+            agg_type = "count"
+        elif any(w in question_lower for w in ['max', 'maximum', 'highest']):
+            agg_type = "max"
+        elif any(w in question_lower for w in ['min', 'minimum', 'lowest']):
+            agg_type = "min"
+        
+        # Detect target column from question
+        target_column = None
+        column_keywords = ['sales', 'calls', 'amount', 'quantity', 'hours', 'score', 'total', 'revenue']
+        for kw in column_keywords:
+            if kw in question_lower:
+                target_column = kw
+                break
+        
+        if not target_column:
+            target_column = "sales"  # default
+        
+        logger.info(f"TABLE-CALC: Aggregation type='{agg_type}', column='{target_column}'")
+        
+        # Find column index from header
+        column_index = None
+        header_line = None
+        for chunk, _, _ in results:
+            if '[Columns:' in chunk or 'Columns:' in chunk:
+                for line in chunk.split('\n'):
+                    if 'Columns:' in line:
+                        header_line = line
+                        # Parse columns
+                        parts = line.replace('[Columns:', '').replace('Columns:', '').strip().rstrip(']').split('|')
+                        for i, col in enumerate(parts):
+                            if target_column.lower() in col.lower().strip():
+                                column_index = i
+                                break
+                        break
+                if column_index is not None:
+                    break
+        
+        if column_index is None:
+            logger.warning(f"TABLE-CALC: Column '{target_column}' not found in headers")
+            return None
+        
+        logger.info(f"TABLE-CALC: Found column '{target_column}' at index {column_index}")
+        
+        # Extract matching rows and values
+        values = []
+        matching_rows = []
+        seen_row_ids = set()
+        
+        for chunk, _, _ in results:
+            lines = chunk.split('\n')
+            for line in lines:
+                if filter_value in line and line.startswith('[R'):
+                    # Extract row ID to avoid duplicates from chunk overlap
+                    row_id = line.split(']')[0] + ']'
+                    if row_id in seen_row_ids:
+                        continue
+                    seen_row_ids.add(row_id)
+                    
+                    # Extract value from target column
+                    parts = line.split('|')
+                    if len(parts) > column_index:
+                        try:
+                            # First part may contain [R#] ID, so column_index might be off by 1
+                            # The actual data starts after [R#] in first cell
+                            val_str = parts[column_index].strip()
+                            val = float(val_str)
+                            values.append(val)
+                            matching_rows.append(line.strip())
+                        except (ValueError, IndexError):
+                            pass
+        
+        if not values:
+            logger.warning(f"TABLE-CALC: No values found for filter '{filter_value}'")
+            return None
+        
+        # Calculate result
+        if agg_type == "sum":
+            result_value = sum(values)
+        elif agg_type == "average":
+            result_value = sum(values) / len(values)
+        elif agg_type == "count":
+            result_value = len(values)
+        elif agg_type == "max":
+            result_value = max(values)
+        elif agg_type == "min":
+            result_value = min(values)
+        else:
+            result_value = sum(values)
+        
+        # Format result
+        if agg_type in ["sum", "max", "min"] and result_value == int(result_value):
+            result_value = int(result_value)
+        
+        summary = f"""
+Found {len(values)} rows matching '{filter_value}'.
+Column: {target_column.title()} (position {column_index + 1})
+{agg_type.title()} calculation: {' + '.join(str(int(v)) for v in values[:10])}{'...' if len(values) > 10 else ''} = {result_value}
+
+Sample matching rows:
+{chr(10).join(matching_rows[:5])}
+{'...' if len(matching_rows) > 5 else ''}
+
+ANSWER: The {agg_type} of {target_column} for {filter_value} is {result_value} (based on {len(values)} rows)
+"""
+        
+        logger.info(f"TABLE-CALC: Result = {result_value} from {len(values)} values")
+        
+        return {
+            "value": result_value,
+            "count": len(values),
+            "agg_type": agg_type,
+            "column": target_column,
+            "filter": filter_value,
+            "summary": summary.strip()
+        }
+
     def answer_query_with_context(self, question: str) -> Dict[str, Any]:
         """
         Answer query and return context and sources with comprehensive logging.
@@ -644,27 +867,56 @@ class RAGEngine:
             sources = []
             
             truncated = False
-
-            for i, (chunk, similarity, metadata) in enumerate(results, 1):
-                # Extract actual document name from metadata
-                doc_name = self._extract_document_name(metadata)
-                
-                # Use full chunk content for LLM context (not truncated preview)
-                context_parts.append(f"📄 Document: {doc_name} (Relevance: {similarity:.1%})\n\n{chunk}")
-                
-                # Create enhanced source entry
-                source_entry = self._format_source_entry(i, chunk, similarity, metadata)
-                source_entry['document_name'] = doc_name
-                source_entry['formatted_preview'] = f"{chunk[:200]}{'...' if len(chunk) > 200 else ''}"
-                sources.append(source_entry)
             
-            context = "\n\n".join(context_parts)
-            context, truncated = self._truncate_context(context)
-            if truncated:
-                logger.info(
-                    "RAG STEP 4 NOTE: Context truncated to %s characters per context window",
-                    self.context_window_size
-                )
+            # Check if this is an aggregation query on structured data
+            query_type = self._detect_query_type(question)
+            is_table_aggregation = query_type == "aggregation" and avg_similarity >= 0.9 and len(results) > 20
+            
+            # For table aggregation, calculate programmatically
+            if is_table_aggregation:
+                logger.info("🔢 TABLE-AWARE: Calculating aggregation programmatically")
+                calc_result = self._calculate_table_aggregation(question, results)
+                
+                if calc_result:
+                    # Use calculated result instead of sending all data to LLM
+                    for i, (chunk, similarity, metadata) in enumerate(results[:5], 1):  # Only first 5 as samples
+                        doc_name = self._extract_document_name(metadata)
+                        context_parts.append(f"📄 Document: {doc_name} (Relevance: {similarity:.1%})\n\n{chunk[:500]}...")
+                        source_entry = self._format_source_entry(i, chunk, similarity, metadata)
+                        source_entry['document_name'] = doc_name
+                        sources.append(source_entry)
+                    
+                    # Add calculation summary to context
+                    context = "\n\n".join(context_parts)
+                    context += f"\n\n📊 PRE-CALCULATED RESULT:\n{calc_result['summary']}"
+                    
+                    logger.info(f"🔢 TABLE-AWARE: Calculation complete - {calc_result['summary'][:100]}")
+                else:
+                    # Fallback to normal context building
+                    is_table_aggregation = False
+
+            if not is_table_aggregation:
+                for i, (chunk, similarity, metadata) in enumerate(results, 1):
+                    # Extract actual document name from metadata
+                    doc_name = self._extract_document_name(metadata)
+                    
+                    # Use full chunk content for LLM context (not truncated preview)
+                    context_parts.append(f"📄 Document: {doc_name} (Relevance: {similarity:.1%})\n\n{chunk}")
+                    
+                    # Create enhanced source entry
+                    source_entry = self._format_source_entry(i, chunk, similarity, metadata)
+                    source_entry['document_name'] = doc_name
+                    source_entry['formatted_preview'] = f"{chunk[:200]}{'...' if len(chunk) > 200 else ''}"
+                    sources.append(source_entry)
+                
+                context = "\n\n".join(context_parts)
+                context, truncated = self._truncate_context(context)
+                if truncated:
+                    logger.info(
+                        "RAG STEP 4 NOTE: Context truncated to %s characters per context window",
+                        self.context_window_size
+                    )
+            
             logger.info(f"RAG STEP 4 COMPLETE: Context built ({len(context)} chars, {len(sources)} sources with metadata)")
         except Exception as e:
             logger.error(f"RAG STEP 4 FAILED: Error building context: {e}", exc_info=True)
@@ -748,9 +1000,42 @@ class RAGEngine:
             confidence_instruction = "The context is moderately relevant to the question. Try to extract relevant information even if not perfectly matching."
         else:
             confidence_instruction = "The context may have partial relevance. Please provide the best answer possible based on available information, and clarify what information was not found."
+        
+        # Detect if this is an aggregation/calculation query
+        question_lower = question.lower()
+        aggregation_keywords = ['total', 'sum', 'count', 'average', 'mean', 'max', 'min', 'how many', 'calculate']
+        is_aggregation = any(kw in question_lower for kw in aggregation_keywords)
+        
+        if is_aggregation:
+            calculation_instruction = """
+IMPORTANT - CALCULATION REQUIRED:
+This question requires a numerical calculation. You MUST:
+1. First identify which column contains the values to aggregate (look for "Columns:" header line that shows: "A:Name | B:ID | E:Sales..." etc.)
+2. Find ALL rows that match the filter criteria (e.g., all rows where City = "New York")
+3. DO NOT skip or deduplicate rows - count EVERY matching row even if values repeat
+4. Extract the numeric value from the CORRECT column for EACH matching row
+5. Add up ALL values: value1 + value2 + value3 + ... = TOTAL
+6. Show your complete calculation with all values
+7. State how many rows were included
+
+CRITICAL: 
+- Some rows may appear in multiple chunks due to overlap - count each UNIQUE row ID only once (e.g., [R2], [R8] are different rows)
+- The Sales column is typically column E or F (check the Columns header)
+- Include ALL rows, not just a sample
+
+Format your answer as:
+"Found X rows for [criteria]. 
+Sales values: [list all values]
+Calculation: sum of all values = TOTAL
+Answer: The total [metric] for [criteria] is TOTAL"
+"""
+        else:
+            calculation_instruction = ""
+        
         prompt = f"""You are an expert document analysis assistant. Your task is to answer questions based on provided document context with high accuracy and clarity.
 
 {confidence_instruction}
+{calculation_instruction}
 
 Document Context:
 {context}

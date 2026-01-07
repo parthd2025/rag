@@ -6,6 +6,7 @@ sys.path.insert(0, 'D:\\RAG')
 
 from backend.ingest import DocumentIngestor
 from backend.vectorstore import FAISSVectorStore
+from backend.docling_client import DoclingClient
 
 print("=" * 80)
 print("FULL SYSTEM TEST: Neural Embeddings + Hybrid Table Format")
@@ -32,9 +33,11 @@ for i, chunk in enumerate(chunks[:2], 1):
     preview = chunk[:200].replace('\n', '\n    ')
     print(f"    {preview}...")
 
-# Add to vector store
-print("\n[4] Adding chunks to vector store with neural embeddings...")
-vs.add_chunks(chunks, "test_sample.xlsx")
+# Enrich with Docling and add to vector store
+print("\n[4] Enriching chunks with Docling and adding to vector store...")
+client = DoclingClient()
+enriched = client.enrich_chunks(chunks, source=file_path, source_path=file_path)
+vs.add_chunks(enriched, "test_sample.xlsx")
 print(f"    Total chunks in index: {vs.index.ntotal}")
 
 # Test semantic search
