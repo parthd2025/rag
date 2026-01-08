@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     CHUNKING_LEVEL: int = Field(3, env="CHUNKING_LEVEL")  # Best practice level
     
     # File Upload Configuration
-    MAX_FILE_SIZE: int = Field(10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB default
+    MAX_FILE_SIZE: int = Field(100 * 1024 * 1024, env="MAX_FILE_SIZE")  # 100MB default
     ALLOWED_EXTENSIONS: Set[str] = Field(
         default_factory=lambda: {
             ".pdf", ".docx", ".txt", ".md",
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         },
         env="ALLOWED_EXTENSIONS",
     )
-    ENABLE_OCR: bool = Field(False, env="ENABLE_OCR")
+    ENABLE_OCR: bool = Field(False, env="ENABLE_OCR")  # Only enable for scanned/image documents
     
     # Vector Store Configuration
     INDEX_PATH: str = Field("data/embeddings/faiss.index", env="INDEX_PATH")

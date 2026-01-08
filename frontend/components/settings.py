@@ -199,6 +199,22 @@ def render_processing_settings(api_client, config: Dict[str, Any]):
     col1, col2 = st.columns(2)
     
     with col1:
+        # Max file size (default 100MB to match Streamlit config.toml)
+        if "max_file_size_mb" not in st.session_state:
+            st.session_state.max_file_size_mb = 100
+        
+        new_max_file_size = st.slider(
+            "📁 Max File Size (MB)",
+            min_value=1,
+            max_value=100,
+            value=st.session_state.max_file_size_mb,
+            step=5,
+            help="Maximum allowed file size for uploads"
+        )
+        st.session_state.max_file_size_mb = new_max_file_size
+        
+        st.divider()
+        
         # Chunk size
         current_chunk_size = config.get("CHUNK_SIZE", 1000)
         new_chunk_size = st.slider(

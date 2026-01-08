@@ -16,7 +16,7 @@ level = "info"
 port = 8501
 headless = true
 runOnSave = true
-maxUploadSize = 10
+maxUploadSize = 100
 enableXsrfProtection = true
 
 [browser]

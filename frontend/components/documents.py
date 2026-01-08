@@ -14,21 +14,49 @@ def render_upload_section(api_client):
     # Upload section with better organization
     st.subheader("📤 Document Upload")
     
+    # Get max file size from session state (set in Settings)
+    # Default to 100MB to match Streamlit config.toml maxUploadSize
+    max_file_size_mb = st.session_state.get("max_file_size_mb", 100)
+    max_file_size_bytes = max_file_size_mb * 1024 * 1024
+    
+    st.caption(f"📁 Max file size: {max_file_size_mb} MB (change in Settings → Processing)")
+    
     files = st.file_uploader(
         "Select documents to upload:", 
         type=["pdf", "docx", "txt", "md", "csv", "xlsx", "pptx", "html"], 
         accept_multiple_files=True,
-        help="Supported formats: PDF, Word, Text, Markdown, CSV, Excel, PowerPoint, HTML"
+        help=f"Supported formats: PDF, Word, Text, Markdown, CSV, Excel, PowerPoint, HTML. Max size: {max_file_size_mb} MB"
     )
     
     if files:
+        # Filter files by size
+        valid_files = []
+        oversized_files = []
+        
+        for f in files:
+            if f.size <= max_file_size_bytes:
+                valid_files.append(f)
+            else:
+                oversized_files.append(f)
+        
+        # Show warning for oversized files
+        if oversized_files:
+            st.warning(f"⚠️ {len(oversized_files)} file(s) exceed the {max_file_size_mb} MB limit and will be skipped:")
+            for f in oversized_files:
+                size_mb = f.size / (1024 * 1024)
+                st.write(f"  • {f.name} ({size_mb:.1f} MB)")
+        
+        if not valid_files:
+            st.error("❌ No files within size limit to upload")
+            return
+        
         # Enhanced file preview with better formatting
-        st.markdown(f"**📋 {len(files)} file(s) selected for upload:**")
+        st.markdown(f"**📋 {len(valid_files)} file(s) selected for upload:**")
         
         # Create columns for better layout
         preview_container = st.container()
         with preview_container:
-            for i, f in enumerate(files):
+            for i, f in enumerate(valid_files):
                 col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                 
                 with col1:
@@ -59,7 +87,7 @@ def render_upload_section(api_client):
         
         with col1:
             upload_button = st.button(
-                f"🚀 Upload {len(files)} Files", 
+                f"🚀 Upload {len(valid_files)} Files", 
                 use_container_width=True,
                 type="primary"
             )
@@ -78,7 +106,7 @@ def render_upload_section(api_client):
             show_details = st.checkbox("Show details", value=True)
         
         if upload_button:
-            upload_with_progress(api_client, files, batch_size, show_details)
+            upload_with_progress(api_client, valid_files, batch_size, show_details)
 
 
 def get_file_icon(filename: str) -> str:

@@ -202,7 +202,8 @@ class DocumentIngestor:
     
     def _extract_pdf(self, file_path: str) -> str:
         """
-        Extract text from PDF file.
+        Extract text from PDF file using Docling for better layout handling,
+        with fallback to PyPDF2 for simple cases.
         
         Args:
             file_path: Path to PDF file
@@ -210,6 +211,27 @@ class DocumentIngestor:
         Returns:
             Extracted text
         """
+        # Try Docling first for complex layouts (infographics, tables, multi-column)
+        try:
+            from docling.document_converter import DocumentConverter
+            
+            logger.debug(f"Attempting Docling extraction for PDF: {file_path}")
+            converter = DocumentConverter()
+            result = converter.convert(file_path)
+            
+            # Extract text with structure preservation
+            text = result.document.export_to_markdown()
+            
+            if text and len(text.strip()) > 50:  # Reasonable content threshold
+                logger.info(f"Successfully extracted PDF with Docling: {file_path}")
+                return text.strip()
+            else:
+                logger.warning(f"Docling returned minimal content, trying fallback for {file_path}")
+                
+        except Exception as e:
+            logger.warning(f"Docling extraction failed, using PyPDF2 fallback: {e}")
+        
+        # Fallback to PyPDF2 for simple PDFs or if Docling fails
         try:
             from PyPDF2 import PdfReader
             
@@ -227,7 +249,7 @@ class DocumentIngestor:
                         logger.warning(f"Error extracting page {page_num} from {file_path}: {e}")
                         continue
                 
-                logger.debug(f"Extracted {num_pages} pages from PDF: {file_path}")
+                logger.debug(f"Extracted {num_pages} pages from PDF using PyPDF2: {file_path}")
             
             return text.strip()
         except ImportError:
@@ -235,6 +257,33 @@ class DocumentIngestor:
             return ""
         except Exception as e:
             logger.error(f"Error extracting PDF {file_path}: {e}", exc_info=True)
+            return ""
+    
+    def _extract_pdf_with_ocr(self, file_path: str) -> str:
+        """Extract text from graphics-heavy PDFs by converting to images and using OCR."""
+        try:
+            from pdf2image import convert_from_path
+            import pytesseract
+            
+            logger.info(f"Converting PDF to images for OCR: {file_path}")
+            images = convert_from_path(file_path, dpi=300)
+            
+            text = ""
+            for i, image in enumerate(images, 1):
+                page_text = pytesseract.image_to_string(image, lang='eng')
+                if page_text.strip():
+                    text += f"\n--- Page {i} ---\n{page_text}\n"
+            
+            logger.info(f"OCR extracted {len(text)} chars from {len(images)} pages")
+            return text.strip()
+            
+        except ImportError:
+            logger.error("pdf2image or pytesseract not installed")
+            logger.error("Install: pip install pdf2image pytesseract")
+            logger.error("Also install Tesseract: https://github.com/UB-Mannheim/tesseract/wiki")
+            return ""
+        except Exception as e:
+            logger.error(f"PDF OCR failed: {e}", exc_info=True)
             return ""
     
     def _extract_docx(self, file_path: str) -> str:
@@ -525,6 +574,10 @@ class DocumentIngestor:
         try:
             import pytesseract
             from PIL import Image
+            
+            # Configure Tesseract path if not in PATH
+            # Uncomment and adjust if Tesseract is not in your system PATH:
+            # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
             
             image = Image.open(file_path)
             text = pytesseract.image_to_string(image)
