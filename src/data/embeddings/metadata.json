@@ -1,0 +1,336 @@
+{
+  "chunks": [
+    "<!-- image -->",
+    "## Employee Loan Policy",
+    "Effective Date:",
+    "June 01, 2024",
+    "Policy Owner:",
+    "Human Resources Department",
+    "## Purpose",
+    "The purpose of this policy is to provide guidelines and procedures for the provision of loans to employees. This policy aims to support employees in managing unexpected financial needs.",
+    "## Scope",
+    "This policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company. Temporary, contract, consultants and probationary employees are not eligible for loans.",
+    "## Definition:",
+    "Loan:",
+    "A sum of money lent to an employee to be repaid over a specified period.",
+    "## Eligibility Criteria",
+    "To be eligible for a loan employees must meet the following criteria:",
+    "- Have completed two years of continuous service with Mindbowser. - Have no outstanding loans or advances with the company. - Demonstrate a valid financial need (e.g., medical emergencies, unforeseen personal expenses etc). - Should not be under PIP in the last six months from the date of loan application. - Should not be serving notice period.",
+    "## Application Process:",
+    "## Request Loan Declaration Form:",
+    "- Navigate to the HROne portal. - Go to the \"Request \" section. - Select the \"Loan\" option.",
+    "Phone : +91-9834164732/33, Website : www.mindbowser.com , Email : contact@mindbowser.com",
+    "<!-- image -->",
+    "- Complete all necessary details in the form. - Ensure accuracy and completeness of the information provided. - Submit the filled Loan Declaration Form through the HROne portal. - The application will be forwarded to the respective authority for approval. - If the loan is approved: You will receive a notification regarding the approval. - If the loan is not approved: You will be notified of the rejection..",
+    "**All conditions will be applicable as mentioned in Declaration form.",
+    "## Approval Process",
+    "- The HR Department will review the application and supporting documents and evaluate the loan application. - The final approval post consultation with the Project Manager and Management will be given by the HR department.",
+    "## Loan Amount and Terms",
+    "- The maximum loan amount shall not exceed 3 times the employee's monthly gross salary or 3 Lakhs whichever is lower. - Interest will not be applicable on the loan amount. - Repayment period cannot exceed 12 months. - Loan repayment will commence from the next payroll cycle after the loan is disbursed and will be deducted monthly.",
+    "## Repayment Conditions:",
+    "- Employees are required to settle any outstanding loan amounts prior to initiating the resignation or notice period. If the loan remains unpaid, an annual interest rate of 10% will be applied to the outstanding balance. - If an employee resigns or is terminated, they must repay any outstanding loan amount before their last working day. Until this is done, their full and final settlement and relieving documents will not be processed. - For any questions regarding this policy, employees should contact the HR Department.",
+    "Phone : +91-9834164732/33, Website : www.mindbowser.com , Email : contact@mindbowser.com"
+  ],
+  "metadata": [
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 0,
+      "chunk_length": 14,
+      "page": null,
+      "section": null,
+      "preview": "<!-- image -->",
+      "timestamp": "2026-01-12T14:35:58.421905",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 1,
+      "chunk_length": 23,
+      "page": null,
+      "section": "Employee Loan Policy",
+      "preview": "## Employee Loan Policy",
+      "timestamp": "2026-01-12T14:35:58.421924",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 2,
+      "chunk_length": 15,
+      "page": null,
+      "section": "Effective Date:",
+      "preview": "Effective Date:",
+      "timestamp": "2026-01-12T14:35:58.421934",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 3,
+      "chunk_length": 13,
+      "page": null,
+      "section": null,
+      "preview": "June 01, 2024",
+      "timestamp": "2026-01-12T14:35:58.421940",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 4,
+      "chunk_length": 13,
+      "page": null,
+      "section": "Policy Owner:",
+      "preview": "Policy Owner:",
+      "timestamp": "2026-01-12T14:35:58.421946",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 5,
+      "chunk_length": 26,
+      "page": null,
+      "section": null,
+      "preview": "Human Resources Department",
+      "timestamp": "2026-01-12T14:35:58.421952",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 6,
+      "chunk_length": 10,
+      "page": null,
+      "section": "Purpose",
+      "preview": "## Purpose",
+      "timestamp": "2026-01-12T14:35:58.421957",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 7,
+      "chunk_length": 185,
+      "page": null,
+      "section": null,
+      "preview": "The purpose of this policy is to provide guidelines and procedures for the provision of loans to emp",
+      "timestamp": "2026-01-12T14:35:58.421965",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 8,
+      "chunk_length": 8,
+      "page": null,
+      "section": "Scope",
+      "preview": "## Scope",
+      "timestamp": "2026-01-12T14:35:58.421971",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 9,
+      "chunk_length": 242,
+      "page": null,
+      "section": null,
+      "preview": "This policy applies to all full-time and part-time employees of Mindbowser who have completed a mini",
+      "timestamp": "2026-01-12T14:35:58.421978",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 10,
+      "chunk_length": 14,
+      "page": null,
+      "section": "Definition:",
+      "preview": "## Definition:",
+      "timestamp": "2026-01-12T14:35:58.421984",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 11,
+      "chunk_length": 5,
+      "page": null,
+      "section": "Loan:",
+      "preview": "Loan:",
+      "timestamp": "2026-01-12T14:35:58.421988",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 12,
+      "chunk_length": 72,
+      "page": null,
+      "section": null,
+      "preview": "A sum of money lent to an employee to be repaid over a specified period.",
+      "timestamp": "2026-01-12T14:35:58.421994",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 13,
+      "chunk_length": 23,
+      "page": null,
+      "section": "Eligibility Criteria",
+      "preview": "## Eligibility Criteria",
+      "timestamp": "2026-01-12T14:35:58.422000",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 14,
+      "chunk_length": 69,
+      "page": null,
+      "section": "To be eligible for a loan employees must meet the following criteria:",
+      "preview": "To be eligible for a loan employees must meet the following criteria:",
+      "timestamp": "2026-01-12T14:35:58.422006",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 15,
+      "chunk_length": 346,
+      "page": null,
+      "section": null,
+      "preview": "- Have completed two years of continuous service with Mindbowser. - Have no outstanding loans or adv",
+      "timestamp": "2026-01-12T14:35:58.422015",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 16,
+      "chunk_length": 23,
+      "page": null,
+      "section": "Application Process:",
+      "preview": "## Application Process:",
+      "timestamp": "2026-01-12T14:35:58.422020",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 17,
+      "chunk_length": 33,
+      "page": null,
+      "section": "Request Loan Declaration Form:",
+      "preview": "## Request Loan Declaration Form:",
+      "timestamp": "2026-01-12T14:35:58.422027",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 18,
+      "chunk_length": 91,
+      "page": null,
+      "section": null,
+      "preview": "- Navigate to the HROne portal. - Go to the \"Request \" section. - Select the \"Loan\" option.",
+      "timestamp": "2026-01-12T14:35:58.422034",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 19,
+      "chunk_length": 88,
+      "page": null,
+      "section": "Phone :",
+      "preview": "Phone : +91-9834164732/33, Website : www.mindbowser.com , Email : contact@mindbowser.com",
+      "timestamp": "2026-01-12T14:35:58.422039",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 20,
+      "chunk_length": 14,
+      "page": null,
+      "section": null,
+      "preview": "<!-- image -->",
+      "timestamp": "2026-01-12T14:35:58.422047",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 21,
+      "chunk_length": 409,
+      "page": null,
+      "section": null,
+      "preview": "- Complete all necessary details in the form. - Ensure accuracy and completeness of the information ",
+      "timestamp": "2026-01-12T14:35:58.422056",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 22,
+      "chunk_length": 69,
+      "page": null,
+      "section": null,
+      "preview": "**All conditions will be applicable as mentioned in Declaration form.",
+      "timestamp": "2026-01-12T14:35:58.422061",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 23,
+      "chunk_length": 19,
+      "page": null,
+      "section": "Approval Process",
+      "preview": "## Approval Process",
+      "timestamp": "2026-01-12T14:35:58.422066",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 24,
+      "chunk_length": 222,
+      "page": null,
+      "section": null,
+      "preview": "- The HR Department will review the application and supporting documents and evaluate the loan appli",
+      "timestamp": "2026-01-12T14:35:58.422073",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 25,
+      "chunk_length": 24,
+      "page": null,
+      "section": "Loan Amount and Terms",
+      "preview": "## Loan Amount and Terms",
+      "timestamp": "2026-01-12T14:35:58.422078",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 26,
+      "chunk_length": 332,
+      "page": null,
+      "section": null,
+      "preview": "- The maximum loan amount shall not exceed 3 times the employee's monthly gross salary or 3 Lakhs wh",
+      "timestamp": "2026-01-12T14:35:58.422086",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 27,
+      "chunk_length": 24,
+      "page": null,
+      "section": "Repayment Conditions:",
+      "preview": "## Repayment Conditions:",
+      "timestamp": "2026-01-12T14:35:58.422091",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 28,
+      "chunk_length": 524,
+      "page": null,
+      "section": null,
+      "preview": "- Employees are required to settle any outstanding loan amounts prior to initiating the resignation ",
+      "timestamp": "2026-01-12T14:35:58.422101",
+      "embedding_mode": "neural"
+    },
+    {
+      "source_doc": "Loan Policy",
+      "chunk_index": 29,
+      "chunk_length": 88,
+      "page": null,
+      "section": "Phone :",
+      "preview": "Phone : +91-9834164732/33, Website : www.mindbowser.com , Email : contact@mindbowser.com",
+      "timestamp": "2026-01-12T14:35:58.422105",
+      "embedding_mode": "neural"
+    }
+  ]
+}
