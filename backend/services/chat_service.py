@@ -4,6 +4,19 @@ import time
 from typing import List, Dict, Any
 from ..logger_config import logger
 
+try:
+    import opik
+    from opik import track
+    OPIK_AVAILABLE = True
+except ImportError:
+    OPIK_AVAILABLE = False
+    logger.warning("Opik not available - tracing disabled")
+    # Create a no-op decorator
+    def track(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 
 class ChatService:
     """Service for handling chat queries."""
@@ -11,6 +24,11 @@ class ChatService:
     def __init__(self, rag_engine):
         self.rag_engine = rag_engine
     
+    @track(
+        name="RAG Query",
+        project_name="rag-system",
+        tags=["chat", "retrieval"]
+    )
     async def process_query(
         self,
         query: str,
@@ -44,12 +62,8 @@ class ChatService:
                     "processing_time": time.time() - start_time
                 }
             
-            # Generate answer using LLM
-            answer = self.rag_engine.generate_answer(
-                query,
-                results["chunks"],
-                temperature=temperature
-            )
+            # Generate answer using answer_query (uses context internally)
+            answer = self.rag_engine.answer_query(query)
             
             processing_time = time.time() - start_time
             logger.info(f"CHAT_SERVICE: Query processed in {processing_time:.2f}s")

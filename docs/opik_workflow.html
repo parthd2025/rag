@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opik Integration Flow - RAG System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            border-bottom: 4px solid #667eea;
+            padding-bottom: 20px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+
+        .flow-container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .flow-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #667eea;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .flow-section:hover {
+            transform: translateX(10px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .step-number {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 50px;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-right: 20px;
+            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .step-title {
+            color: #2c3e50;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .step-description {
+            color: #555;
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin-left: 70px;
+        }
+
+        .code-block {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0 15px 70px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .code-block .keyword {
+            color: #c678dd;
+        }
+
+        .code-block .function {
+            color: #61afef;
+        }
+
+        .code-block .string {
+            color: #98c379;
+        }
+
+        .code-block .comment {
+            color: #5c6370;
+            font-style: italic;
+        }
+
+        .highlight-box {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0 15px 70px;
+            border-radius: 8px;
+        }
+
+        .highlight-box strong {
+            color: #2980b9;
+        }
+
+        .arrow {
+            text-align: center;
+            color: #667eea;
+            font-size: 2em;
+            margin: 10px 0;
+        }
+
+        .component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0 20px 70px;
+        }
+
+        .component-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-top: 4px solid #667eea;
+        }
+
+        .component-card h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .component-card p {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        .data-flow {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 30px 0;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .data-flow h3 {
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .data-flow-items {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .data-flow-item {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .data-flow-arrow {
+            font-size: 2em;
+            color: white;
+        }
+
+        .benefits {
+            background: #e8f8f5;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 30px 0;
+            border-left: 5px solid #27ae60;
+        }
+
+        .benefits h3 {
+            color: #27ae60;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .benefits ul {
+            list-style: none;
+            margin-left: 20px;
+        }
+
+        .benefits li {
+            padding: 10px 0;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+
+        .benefits li:before {
+            content: "✓ ";
+            color: #27ae60;
+            font-weight: bold;
+            font-size: 1.3em;
+            margin-right: 10px;
+        }
+
+        .trace-example {
+            background: #fff3cd;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0 15px 70px;
+            border-left: 4px solid #ffc107;
+        }
+
+        .trace-example strong {
+            color: #856404;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .step-title {
+                font-size: 1.4em;
+            }
+
+            .step-description {
+                margin-left: 0;
+            }
+
+            .code-block,
+            .highlight-box,
+            .trace-example {
+                margin-left: 0;
+            }
+
+            .component-grid {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Opik Integration Flow</h1>
+        <p class="subtitle">Step-by-Step RAG System Observability & Tracing</p>
+
+        <div class="data-flow">
+            <h3>📊 High-Level Data Flow</h3>
+            <div class="data-flow-items">
+                <div class="data-flow-item">
+                    <strong>User Query</strong><br>
+                    <small>Question Input</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>RAG Pipeline</strong><br>
+                    <small>Opik Tracking</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>Opik Server</strong><br>
+                    <small>Docker (localhost:5173)</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>UI Dashboard</strong><br>
+                    <small>Visualization & Analysis</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="flow-container">
+            <!-- Step 1 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">1</span>
+                    <span>User Submits Query</span>
+                </div>
+                <div class="step-description">
+                    <p>The user submits a question through the Streamlit frontend interface.</p>
+                    
+                    <div class="code-block">
+<span class="comment"># Frontend - app.py</span>
+user_question = st.text_input(<span class="string">"Ask a question:"</span>)
+<span class="keyword">if</span> user_question:
+    response = chat_service.<span class="function">query_documents</span>(user_question)
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>What happens:</strong> User's question is captured and sent to the backend RAG service.
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 2 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">2</span>
+                    <span>Opik Trace Initialization</span>
+                </div>
+                <div class="step-description">
+                    <p>The RAG function is decorated with Opik's @track() decorator, which automatically creates a trace.</p>
+                    
+                    <div class="code-block">
+<span class="comment"># Backend - rag_engine.py or chat_service.py</span>
+<span class="keyword">import</span> opik
+<span class="keyword">from</span> opik <span class="keyword">import</span> track
+
+<span class="keyword">@track</span>(
+    name=<span class="string">"RAG Query"</span>,
+    project_name=<span class="string">"rag-system"</span>,
+    tags=[<span class="string">"production"</span>, <span class="string">"retrieval"</span>]
+)
+<span class="keyword">def</span> <span class="function">query_documents</span>(question: str) -> dict:
+    <span class="comment"># RAG logic here</span>
+    <span class="keyword">pass</span>
+                    </div>
+
+                    <div class="trace-example">
+                        <strong>Trace Created:</strong> A new trace ID is generated (e.g., 019b9d30-5fc2-7e0e-8f30-32a1acd89b9f)
+                        and logging begins to the Opik server.
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>What's captured:</strong>
+                        <ul>
+                            <li>Trace ID</li>
+                            <li>Timestamp (start time)</li>
+                            <li>Input parameters (question)</li>
+                            <li>Project name and tags</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 3 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">3</span>
+                    <span>Document Retrieval Phase</span>
+                </div>
+                <div class="step-description">
+                    <p>The system retrieves relevant documents from the vector store (FAISS). This step can also be tracked.</p>
+                    
+                    <div class="code-block">
+<span class="keyword">@track</span>(name=<span class="string">"Document Retrieval"</span>)
+<span class="keyword">def</span> <span class="function">retrieve_documents</span>(question: str, top_k: int = 5):
+    <span class="comment"># Get embeddings for the question</span>
+    embeddings = embedding_model.encode(question)
+    
+    <span class="comment"># Search vector store</span>
+    docs = vectorstore.<span class="function">similarity_search</span>(question, k=top_k)
+    
+    <span class="keyword">return</span> docs
+                    </div>
+
+                    <div class="component-grid">
+                        <div class="component-card">
+                            <h4>📄 Input</h4>
+                            <p>User question + embedding parameters</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>🔍 Process</h4>
+                            <p>FAISS similarity search with neural embeddings</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>📊 Output</h4>
+                            <p>Top-K relevant document chunks with scores</p>
+                        </div>
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>Opik captures:</strong>
+                        <ul>
+                            <li>Retrieval duration</li>
+                            <li>Number of documents retrieved</li>
+                            <li>Document metadata (sources, scores)</li>
+                            <li>Search parameters (top_k, similarity threshold)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 4 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">4</span>
+                    <span>Context Preparation</span>
+                </div>
+                <div class="step-description">
+                    <p>Retrieved documents are formatted and prepared as context for the LLM.</p>
+                    
+                    <div class="code-block">
+<span class="keyword">@track</span>(name=<span class="string">"Context Preparation"</span>)
+<span class="keyword">def</span> <span class="function">prepare_context</span>(docs: list) -> str:
+    context = <span class="string">""</span>
+    <span class="keyword">for</span> i, doc <span class="keyword">in</span> enumerate(docs):
+        context += <span class="string">f"Document {i+1}:\n{doc.page_content}\n\n"</span>
+    
+    <span class="keyword">return</span> context
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>Opik tracks:</strong> Context length, number of documents used, and token count.
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 5 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">5</span>
+                    <span>LLM Answer Generation</span>
+                </div>
+                <div class="step-description">
+                    <p>The LLM (Groq/Llama) generates an answer based on the retrieved context.</p>
+                    
+                    <div class="code-block">
+<span class="keyword">@track</span>(name=<span class="string">"LLM Generation"</span>)
+<span class="keyword">def</span> <span class="function">generate_answer</span>(question: str, context: str) -> str:
+    prompt = <span class="string">f"""
+    Context: {context}
+    
+    Question: {question}
+    
+    Answer based on the context above:
+    """</span>
+    
+    <span class="comment"># Call LLM API (Groq)</span>
+    response = llm_client.<span class="function">chat_completion</span>(
+        model=<span class="string">"llama3-70b"</span>,
+        messages=[{<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: prompt}]
+    )
+    
+    <span class="keyword">return</span> response.choices[0].message.content
+                    </div>
+
+                    <div class="component-grid">
+                        <div class="component-card">
+                            <h4>🤖 Model</h4>
+                            <p>Groq Llama 3 70B</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>⚡ Metrics</h4>
+                            <p>Latency, tokens, cost</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>📝 Output</h4>
+                            <p>Generated answer text</p>
+                        </div>
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>Opik captures:</strong>
+                        <ul>
+                            <li>LLM model name and version</li>
+                            <li>Prompt sent to LLM</li>
+                            <li>Response received</li>
+                            <li>Generation time</li>
+                            <li>Token usage (input/output)</li>
+                            <li>API latency</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 6 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">6</span>
+                    <span>Response Formatting & Return</span>
+                </div>
+                <div class="step-description">
+                    <p>The final response is formatted with sources and metadata, then returned to the user.</p>
+                    
+                    <div class="code-block">
+<span class="comment"># Main RAG function completes</span>
+response = {
+    <span class="string">"answer"</span>: generated_answer,
+    <span class="string">"sources"</span>: [doc.metadata[<span class="string">"source"</span>] <span class="keyword">for</span> doc <span class="keyword">in</span> docs],
+    <span class="string">"confidence"</span>: similarity_scores,
+    <span class="string">"processing_time"</span>: total_time
+}
+
+<span class="keyword">return</span> response
+                    </div>
+
+                    <div class="trace-example">
+                        <strong>Trace Completed:</strong> Opik automatically records the function output, end timestamp, 
+                        and calculates total execution time.
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 7 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">7</span>
+                    <span>Data Transmission to Opik Server</span>
+                </div>
+                <div class="step-description">
+                    <p>All captured trace data is sent to the Opik backend running in Docker containers.</p>
+                    
+                    <div class="component-grid">
+                        <div class="component-card">
+                            <h4>📡 Python SDK</h4>
+                            <p>Collects trace data during execution</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>🌐 HTTP API</h4>
+                            <p>Sends data to localhost:8080</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>💾 Storage</h4>
+                            <p>Stored in ClickHouse, MySQL, MinIO</p>
+                        </div>
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>Data stored includes:</strong>
+                        <ul>
+                            <li>Complete trace hierarchy (parent/child spans)</li>
+                            <li>All inputs and outputs at each step</li>
+                            <li>Timing information for each operation</li>
+                            <li>Tags, metadata, and custom attributes</li>
+                            <li>Error logs if any failures occurred</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <!-- Step 8 -->
+            <div class="flow-section">
+                <div class="step-title">
+                    <span class="step-number">8</span>
+                    <span>Visualization in Opik UI</span>
+                </div>
+                <div class="step-description">
+                    <p>Access the Opik dashboard at <strong>http://localhost:5173</strong> to view traces.</p>
+                    
+                    <div class="component-grid">
+                        <div class="component-card">
+                            <h4>📈 Traces View</h4>
+                            <p>See all RAG queries with timing</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>🔬 Detailed Analysis</h4>
+                            <p>Drill down into each step</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>📊 Metrics Dashboard</h4>
+                            <p>Performance stats & trends</p>
+                        </div>
+                        <div class="component-card">
+                            <h4>🏷️ Filter & Search</h4>
+                            <p>By project, tags, or time</p>
+                        </div>
+                    </div>
+
+                    <div class="highlight-box">
+                        <strong>What you can see in the UI:</strong>
+                        <ul>
+                            <li><strong>Trace Timeline:</strong> Visual representation of execution flow</li>
+                            <li><strong>Span Duration:</strong> How long each step took</li>
+                            <li><strong>Input/Output Inspection:</strong> View exact data at each stage</li>
+                            <li><strong>Error Tracking:</strong> Identify failures and bottlenecks</li>
+                            <li><strong>Comparison:</strong> Compare different query performances</li>
+                            <li><strong>Cost Analysis:</strong> Track LLM token usage and costs</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="benefits">
+            <h3>🎯 Benefits of Opik Integration</h3>
+            <ul>
+                <li><strong>Performance Monitoring:</strong> Identify slow components in your RAG pipeline</li>
+                <li><strong>Debugging:</strong> Trace errors back to specific steps with full context</li>
+                <li><strong>Quality Assurance:</strong> Compare answers across different queries</li>
+                <li><strong>Cost Tracking:</strong> Monitor LLM API usage and associated costs</li>
+                <li><strong>User Experience:</strong> Optimize response times based on real data</li>
+                <li><strong>A/B Testing:</strong> Compare different models or retrieval strategies</li>
+                <li><strong>Compliance:</strong> Audit trail of all queries and responses</li>
+                <li><strong>Team Collaboration:</strong> Share traces with team members for analysis</li>
+            </ul>
+        </div>
+
+        <div class="data-flow">
+            <h3>🔄 Continuous Monitoring Loop</h3>
+            <div class="data-flow-items">
+                <div class="data-flow-item">
+                    <strong>1. Track</strong><br>
+                    <small>Every RAG query</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>2. Analyze</strong><br>
+                    <small>Performance metrics</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>3. Identify</strong><br>
+                    <small>Bottlenecks</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>4. Optimize</strong><br>
+                    <small>Improve system</small>
+                </div>
+                <div class="data-flow-arrow">→</div>
+                <div class="data-flow-item">
+                    <strong>5. Validate</strong><br>
+                    <small>Measure improvements</small>
+                </div>
+            </div>
+        </div>
+
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 15px; margin-top: 40px; text-align: center;">
+            <h3 style="color: #667eea; margin-bottom: 20px;">🚀 Ready to Use</h3>
+            <p style="font-size: 1.2em; color: #555;">
+                Opik is now integrated and ready to track your RAG system!<br>
+                <strong>UI:</strong> <a href="http://localhost:5173" style="color: #667eea; text-decoration: none;">http://localhost:5173</a><br>
+                <strong>Status:</strong> <span style="color: #27ae60; font-weight: bold;">✓ All containers running</span>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

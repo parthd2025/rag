@@ -15,6 +15,9 @@ from backend.ingest import DocumentIngestor
 from backend.vectorstore import FAISSVectorStore
 from backend.llm_loader import get_llm_engine
 from backend.rag_engine import RAGEngine
+from backend.services.chat_service_enhanced import EnhancedChatService
+from backend.services.tracked_chat_service import TrackedRAGService
+from backend.opik_config import initialize_opik, get_opik_manager
 
 
 class QueryRequest(BaseModel):
@@ -81,6 +84,8 @@ vector_store: Optional[FAISSVectorStore] = None
 llm_engine = None
 rag_engine: Optional[RAGEngine] = None
 ingestor: Optional[DocumentIngestor] = None
+enhanced_chat_service = None
+tracked_rag_service: Optional[TrackedRAGService] = None
 
 runtime_settings: Dict[str, Any] = {
     "chunking_level": settings.CHUNKING_LEVEL,
@@ -167,6 +172,17 @@ def init_components() -> None:
     logger.info("=== Starting RAG system initialization flow ===")
     
     try:
+        # Step 0: Initialize OPIK observability
+        logger.info("INIT STEP 0: Initializing OPIK observability")
+        opik_success, opik_message = initialize_opik()
+        if opik_success:
+            logger.info(f"INIT STEP 0 COMPLETE: {opik_message}")
+            opik_status = get_opik_manager().get_status()
+            logger.info(f"OPIK Status: URL={opik_status['url']}, Project={opik_status['project_name']}")
+        else:
+            logger.warning(f"INIT STEP 0 WARNING: {opik_message}")
+            logger.warning("OPIK tracing will be disabled for this session")
+        
         # Step 1: Initialize document ingestor
         logger.info("INIT STEP 1: Initializing document ingestor")
         ingestor = DocumentIngestor(
@@ -212,6 +228,16 @@ def init_components() -> None:
         )
         logger.info("INIT STEP 4 COMPLETE: RAG engine initialized")
         
+        # Step 5: Initialize enhanced chat service with Opik tracking
+        logger.info("INIT STEP 5: Initializing enhanced chat service with Opik tracking")
+        global enhanced_chat_service, tracked_rag_service
+        enhanced_chat_service = EnhancedChatService(rag_engine)
+        
+        # Step 5b: Initialize tracked RAG service with LiteLLM + Opik integration
+        logger.info("INIT STEP 5b: Initializing TrackedRAGService with LiteLLM + Opik")
+        tracked_rag_service = TrackedRAGService(rag_engine)
+        logger.info("INIT STEP 5 COMPLETE: Chat services initialized with full Opik tracing")
+        
         logger.info("=== RAG system initialization flow COMPLETE ===")
         
     except Exception as e:
@@ -237,6 +263,12 @@ async def shutdown() -> None:
         if vector_store:
             vector_store._save_index()
             logger.info("Vector store saved successfully")
+        
+        # Flush OPIK traces on shutdown
+        opik_manager = get_opik_manager()
+        if opik_manager.available:
+            opik_manager.flush()
+            logger.info("OPIK traces flushed successfully")
     except Exception as e:
         logger.error(f"Error during shutdown: {e}", exc_info=True)
     logger.info("Shutdown complete")
@@ -256,12 +288,15 @@ async def global_exception_handler(request, exc: Exception) -> JSONResponse:
 async def health() -> dict:
     """Health check endpoint."""
     try:
+        opik_manager = get_opik_manager()
         return {
             "status": "ok",
             "llm_ready": llm_engine.is_ready() if llm_engine else False,
             "chunks": len(vector_store.chunks) if vector_store else 0,
             "vector_store_initialized": vector_store is not None,
-            "rag_engine_initialized": rag_engine is not None
+            "rag_engine_initialized": rag_engine is not None,
+            "opik_available": opik_manager.available,
+            "opik_project": opik_manager.config.project_name if opik_manager.available else None
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}", exc_info=True)
@@ -269,6 +304,57 @@ async def health() -> dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Health check failed"
         )
+
+
+@app.get("/opik/status")
+async def opik_status() -> dict:
+    """Get OPIK observability status for debugging."""
+    try:
+        opik_manager = get_opik_manager()
+        status = opik_manager.get_status()
+        
+        # Add additional debugging info
+        status["ui_url"] = status["url"].replace("/api", "") if status["url"] else None
+        status["troubleshooting"] = {
+            "check_docker": "docker ps --filter 'name=opik'",
+            "check_ui": f"Open {status['ui_url']} in browser",
+            "reinitialize": "POST /opik/reinitialize"
+        }
+        
+        return status
+    except Exception as e:
+        logger.error(f"OPIK status check failed: {e}", exc_info=True)
+        return {
+            "available": False,
+            "error": str(e)
+        }
+
+
+@app.post("/opik/reinitialize")
+async def opik_reinitialize() -> dict:
+    """
+    Force re-initialization of OPIK.
+    
+    Useful after:
+    - Deleting projects in OPIK UI
+    - Configuration changes
+    - Connection issues
+    """
+    try:
+        opik_manager = get_opik_manager()
+        success = opik_manager.reinitialize()
+        
+        return {
+            "success": success,
+            "status": opik_manager.get_status(),
+            "message": "OPIK re-initialized successfully" if success else f"Re-initialization failed: {opik_manager.initialization_error}"
+        }
+    except Exception as e:
+        logger.error(f"OPIK re-initialization failed: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 @app.get("/config")
@@ -528,18 +614,40 @@ async def chat(req: QueryRequest) -> QueryResponse:
         )
     logger.info(f"CHAT STEP 3 COMPLETE: Vector store validated ({len(vector_store.chunks)} chunks)")
     
-    # Step 4: Process query using runtime settings
+    # Step 4: Process query using TrackedRAGService with full Opik pipeline visibility
     try:
         # Use runtime settings instead of hardcoded config values
         current_top_k = req.top_k or runtime_settings["top_k"]
-        logger.info(f"CHAT STEP 4: Processing query with top_k={current_top_k} (from runtime settings)")
-        rag_engine.set_top_k(current_top_k)
-        result = rag_engine.answer_query_with_context(req.question)
+        current_temperature = runtime_settings["temperature"]
+        logger.info(f"CHAT STEP 4: Processing query with TrackedRAGService (top_k={current_top_k}, temperature={current_temperature})")
+        
+        # Use TrackedRAGService for full pipeline visibility in Opik
+        if tracked_rag_service:
+            result = await tracked_rag_service.process_query(
+                query=req.question,
+                top_k=current_top_k,
+                temperature=current_temperature,
+                user_id=None  # Can be extended to include user tracking
+            )
+        elif enhanced_chat_service:
+            # Fallback to enhanced service
+            logger.warning("TrackedRAGService not available, using EnhancedChatService")
+            result = await enhanced_chat_service.process_query_enhanced(
+                query=req.question,
+                top_k=current_top_k,
+                temperature=current_temperature,
+                user_id=None
+            )
+        else:
+            # Fallback to basic processing
+            logger.warning("Chat services not available, using basic RAG engine")
+            rag_engine.set_top_k(current_top_k)
+            result = rag_engine.answer_query_with_context(req.question)
         
         if result.get("answer"):
             logger.info(f"CHAT STEP 4 COMPLETE: Query processed successfully, answer length: {len(result['answer'])} chars")
             logger.info(f"=== Chat endpoint flow COMPLETE ===")
-            return QueryResponse(answer=result["answer"], sources=result["sources"])
+            return QueryResponse(answer=result["answer"], sources=result.get("sources", []))
         else:
             logger.warning("CHAT STEP 4 FAILED: Empty answer returned")
             raise HTTPException(

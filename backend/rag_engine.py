@@ -8,6 +8,19 @@ from .config import settings
 import re
 from collections import Counter
 
+try:
+    import opik
+    from opik import track
+    OPIK_AVAILABLE = True
+except ImportError:
+    OPIK_AVAILABLE = False
+    logger.warning("Opik not available - tracing disabled")
+    # Create a no-op decorator
+    def track(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 
 class RAGEngine:
     """Main RAG engine combining retrieval and generation."""
@@ -339,6 +352,11 @@ class RAGEngine:
         
         return doc_results
 
+    @track(
+        name="Document Retrieval",
+        project_name="rag-system",
+        tags=["retrieval", "vectorstore"]
+    )
     def retrieve_context(self, question: str, top_k: Optional[int] = None) -> Dict[str, Any]:
         """Return top matching chunks with normalized metadata."""
         if not question or not question.strip():
@@ -367,6 +385,11 @@ class RAGEngine:
             "confidence": avg_similarity,
         }
     
+    @track(
+        name="Answer Query",
+        project_name="rag-system",
+        tags=["generation", "llm"]
+    )
     def answer_query(self, question: str) -> str:
         """
         Answer a question using RAG (simple version without context).
@@ -392,7 +415,7 @@ class RAGEngine:
                 logger.warning("No documents found for query")
                 return "No documents found. Please upload documents first."
             
-            context = "\n\n".join([f"[Document]\n{chunk}" for chunk, _ in results])
+            context = "\n\n".join([f"[Document]\n{chunk}" for chunk, _, _ in results])
             context, truncated = self._truncate_context(context)
             if truncated:
                 logger.debug(

@@ -1,0 +1,24 @@
+# Quick command reference for Opik
+
+# Start Opik (first time - pulls images, takes 5-10 minutes)
+cd D:\RAG\opik
+.\opik.ps1
+
+# Stop Opik
+cd D:\RAG\opik
+.\opik.ps1 --stop
+
+# Check status
+docker ps --filter "name=opik"
+
+# View logs
+docker logs opik-backend -f
+
+# Access UI
+# http://localhost:5173
+
+# Configure Python client
+pip install opik
+# Then in Python:
+# import opik
+# opik.configure(use_local=True)
