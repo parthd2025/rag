@@ -7,8 +7,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
-env_path = Path(__file__).parent.parent / ".env"
+# Load environment variables (go up to project root: src/frontend -> src -> RAG)
+env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path)
 
 # API Configuration

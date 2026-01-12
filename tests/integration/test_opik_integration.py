@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend.vectorstore import FAISSVectorStore
 from backend.llm_loader import GroqLLMEngine
 from backend.rag_engine import RAGEngine
-from backend.services.chat_service import ChatService
+from backend.services.chat_service_enhanced import EnhancedChatService as ChatService
 from backend.config import settings
 
 
