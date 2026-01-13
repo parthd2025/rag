@@ -17,6 +17,7 @@ from backend.llm_loader import get_llm_engine
 from backend.rag_engine import RAGEngine
 from backend.services.chat_service_enhanced import EnhancedChatService
 from backend.services.tracked_chat_service import TrackedRAGService
+from backend.services.evaluation_service import ModelComparisonService, LLMEvaluator
 from backend.opik_config import initialize_opik, get_opik_manager
 
 
@@ -59,6 +60,27 @@ class SettingsUpdateRequest(BaseModel):
     max_suggested_questions: Optional[int] = Field(None, ge=1, le=20, description="Maximum suggested questions to generate")
 
 
+class ModelComparisonRequest(BaseModel):
+    """Request model for comparing multiple LLM models."""
+    question: str = Field(..., min_length=1, max_length=1000, description="Question to compare across models")
+    models: Optional[List[str]] = Field(None, description="List of model names to compare")
+    top_k: Optional[int] = Field(5, ge=1, le=20, description="Number of context chunks to retrieve")
+    
+    @validator("question")
+    def validate_question(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Question cannot be empty")
+        return v.strip()
+
+
+class EvaluationRequest(BaseModel):
+    """Request model for evaluating a single response."""
+    question: str = Field(..., description="The question asked")
+    answer: str = Field(..., description="The answer to evaluate")
+    context: str = Field(..., description="The context used for generation")
+    model_used: str = Field("unknown", description="Model that generated the answer")
+
+
 # FastAPI app
 app = FastAPI(
     title="RAG Chatbot API",
@@ -86,6 +108,7 @@ rag_engine: Optional[RAGEngine] = None
 ingestor: Optional[DocumentIngestor] = None
 enhanced_chat_service = None
 tracked_rag_service: Optional[TrackedRAGService] = None
+model_comparison_service: Optional[ModelComparisonService] = None
 
 runtime_settings: Dict[str, Any] = {
     "chunking_level": settings.CHUNKING_LEVEL,
@@ -838,6 +861,118 @@ async def delete_document(document_name: str) -> dict:
         )
 
 
+# ==================== Model Comparison Endpoints ====================
+
+@app.post("/compare-models")
+async def compare_models(req: ModelComparisonRequest) -> dict:
+    """
+    Compare responses from multiple LLM models for the same query.
+    
+    Each model's response is evaluated for:
+    - Relevance: How relevant is the answer to the question
+    - Faithfulness: Is the answer grounded in the context
+    - Completeness: Does the answer fully address the question
+    
+    Results are tracked in OPIK for analysis.
+    """
+    global model_comparison_service
+    
+    logger.info(f"=== Starting model comparison for query: {req.question[:100]}... ===")
+    
+    # Validate RAG engine
+    if not rag_engine:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="RAG engine not initialized"
+        )
+    
+    # Validate vector store has documents
+    if not vector_store or not vector_store.chunks:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No documents loaded. Please upload documents first."
+        )
+    
+    # Initialize comparison service if needed
+    if not model_comparison_service:
+        model_comparison_service = ModelComparisonService(rag_engine)
+    
+    try:
+        result = await model_comparison_service.compare_models(
+            query=req.question,
+            models=req.models,
+            top_k=req.top_k or runtime_settings["top_k"]
+        )
+        
+        logger.info(f"Model comparison complete: {result.get('models_compared', 0)} models compared")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Model comparison error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Model comparison failed: {str(e)}"
+        )
+
+
+@app.get("/available-models")
+async def get_available_models() -> dict:
+    """Get list of available LLM models for comparison."""
+    global model_comparison_service
+    
+    if not model_comparison_service:
+        if rag_engine:
+            model_comparison_service = ModelComparisonService(rag_engine)
+        else:
+            # Return default list even if RAG not initialized
+            return {
+                "models": [
+                    {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "description": "Best quality, versatile"},
+                    {"id": "qwen/qwen3-32b", "name": "Qwen 3 32B", "description": "Qwen's latest 32B model"},
+                    {"id": "meta-llama/llama-4-scout-17b-16e-instruct", "name": "Llama 4 Scout 17B", "description": "Latest Llama 4 model"},
+                ],
+                "current_model": settings.LLM_MODEL
+            }
+    
+    return {
+        "models": model_comparison_service.get_available_models(),
+        "current_model": settings.LLM_MODEL
+    }
+
+
+@app.post("/evaluate-response")
+async def evaluate_response(req: EvaluationRequest) -> dict:
+    """
+    Evaluate a single RAG response for quality metrics.
+    
+    Scores the response on:
+    - Relevance (0-1)
+    - Faithfulness (0-1)
+    - Completeness (0-1)
+    - Overall weighted score
+    """
+    try:
+        evaluator = LLMEvaluator()
+        scores = evaluator.evaluate(
+            question=req.question,
+            context=req.context,
+            answer=req.answer,
+            model_used=req.model_used
+        )
+        
+        return {
+            "scores": scores.to_dict(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Evaluation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Evaluation failed: {str(e)}"
+        )
+
+
 @app.get("/")
 async def root() -> dict:
     """API information endpoint."""
@@ -848,6 +983,9 @@ async def root() -> dict:
             "health": "GET /health",
             "upload": "POST /upload",
             "chat": "POST /chat",
+            "compare-models": "POST /compare-models",
+            "available-models": "GET /available-models",
+            "evaluate-response": "POST /evaluate-response",
             "suggested-questions": "POST /suggested-questions",
             "documents": "GET /documents",
             "documents/reload": "POST /documents/reload",

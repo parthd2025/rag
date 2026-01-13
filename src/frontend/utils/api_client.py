@@ -150,6 +150,46 @@ class APIClient:
         logger.info("Streaming requested but not yet implemented, using standard query")
         return self._query_standard(payload)
     
+    def compare_models(
+        self,
+        question: str,
+        models: Optional[List[str]] = None,
+        top_k: int = 5
+    ) -> Optional[Dict[str, Any]]:
+        """Compare responses from multiple models with automatic evaluation."""
+        payload = {
+            "question": question,
+            "top_k": top_k
+        }
+        
+        if models:
+            payload["models"] = models
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/compare-models",
+                json=payload,
+                timeout=self.timeout * 2,  # Comparison takes longer
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Model comparison failed: {e}")
+            raise
+    
+    def get_available_models(self) -> Optional[Dict[str, Any]]:
+        """Get list of available models for comparison."""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/available-models",
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get available models: {e}")
+            return None
+    
     def generate_suggested_questions(self, num_questions: int = 5) -> Optional[Dict[str, Any]]:
         """Generate suggested questions from uploaded documents."""
         payload = {"num_questions": min(num_questions, 20)}

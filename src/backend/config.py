@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     
     # API Keys
     GROQ_API_KEY: Optional[str] = Field(None, env="GROQ_API_KEY")
+    OPENAI_API_KEY: Optional[str] = Field(None, env="OPENAI_API_KEY")
     
     # Server Configuration
     API_HOST: str = Field("0.0.0.0", env="API_HOST")

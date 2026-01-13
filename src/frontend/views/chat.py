@@ -24,8 +24,8 @@ def render_chat_page():
     total_chunks = get_state("total_chunks", 0)
     total_docs = get_state("total_docs", 0)
     
-    # Page-specific header
-    col1, col2 = st.columns([4, 1])
+    # Page-specific header with comparison toggle
+    col1, col2, col3 = st.columns([3, 1, 1])
     
     with col1:
         if total_chunks == 0:
@@ -34,6 +34,15 @@ def render_chat_page():
             st.success(f"📚 **{total_chunks:,} chunks ready** from {total_docs} document(s). Ask me anything!")
     
     with col2:
+        # Model comparison toggle
+        comparison_mode = st.checkbox(
+            "🔬 Compare Models",
+            value=get_state("comparison_mode", False),
+            help="Enable to compare responses from different models with quality scores"
+        )
+        set_state("comparison_mode", comparison_mode)
+    
+    with col3:
         # Clear conversation button
         if st.button("🗑️ Clear Chat", help="Start a new conversation", use_container_width=True):
             clear_chat_state()
@@ -96,6 +105,8 @@ def _render_user_message(msg: Dict, index: int):
 def _render_assistant_message(msg: Dict, index: int):
     """Render an assistant message with sources and metadata."""
     
+    is_comparison = msg.get("is_comparison", False)
+    
     with st.container():
         # Main response
         st.markdown(f"""
@@ -108,6 +119,10 @@ def _render_assistant_message(msg: Dict, index: int):
         </div>
         """, unsafe_allow_html=True)
         
+        # Comparison mode: Show model comparison details
+        if is_comparison and msg.get("comparison_data"):
+            _render_comparison_details(msg["comparison_data"])
+        
         # Response metadata row
         col1, col2, col3 = st.columns([2, 2, 2])
         
@@ -115,7 +130,8 @@ def _render_assistant_message(msg: Dict, index: int):
             confidence = msg.get('confidence', 0.0)
             if confidence > 0:
                 emoji = "🟢" if confidence > 0.8 else "🟡" if confidence > 0.6 else "🔴"
-                st.caption(f"{emoji} Confidence: {confidence:.1%}")
+                label = "Quality Score" if is_comparison else "Confidence"
+                st.caption(f"{emoji} {label}: {confidence:.1%}")
         
         with col2:
             sources_count = len(msg.get("sources", []))
@@ -131,6 +147,69 @@ def _render_assistant_message(msg: Dict, index: int):
         sources = msg.get("sources", [])
         if sources:
             _render_sources_section(sources, index)
+
+
+def _render_comparison_details(comparison_data: Dict):
+    """Render model comparison details with scores."""
+    
+    with st.expander("🔬 Model Comparison Details", expanded=False):
+        st.markdown(f"**🏆 Best Model:** `{comparison_data.get('best_model', 'Unknown')}`")
+        st.markdown(f"**📊 Models Compared:** {comparison_data.get('models_compared', 0)}")
+        st.markdown(f"**📚 Context Chunks:** {comparison_data.get('context_chunks', 0)}")
+        
+        st.markdown("---")
+        st.markdown("### 📈 Quality Scores")
+        
+        all_results = comparison_data.get("all_results", [])
+        
+        for i, result in enumerate(all_results, 1):
+            model_name = result.get("model", "Unknown")
+            scores = result.get("scores", {})
+            
+            st.markdown(f"#### Model {i}: `{model_name}`")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                relevance = scores.get("relevance", 0)
+                emoji = "🟢" if relevance > 0.7 else "🟡" if relevance > 0.4 else "🔴"
+                st.metric("Relevance", f"{relevance:.0%}", help="How relevant is the answer?")
+            
+            with col2:
+                faithfulness = scores.get("faithfulness", 0)
+                emoji = "🟢" if faithfulness > 0.7 else "🟡" if faithfulness > 0.4 else "🔴"
+                st.metric("Faithfulness", f"{faithfulness:.0%}", help="Is it grounded in context?")
+            
+            with col3:
+                completeness = scores.get("completeness", 0)
+                emoji = "🟢" if completeness > 0.7 else "🟡" if completeness > 0.4 else "🔴"
+                st.metric("Completeness", f"{completeness:.0%}", help="Does it fully answer?")
+            
+            with col4:
+                overall = scores.get("overall", 0)
+                emoji = "🟢" if overall > 0.7 else "🟡" if overall > 0.4 else "🔴"
+                st.metric("Overall", f"{overall:.0%}", help="Weighted average score")
+            
+            # Show generation details
+            gen_time = result.get("generation_time", 0)
+            tokens = result.get("tokens", {})
+            
+            if gen_time > 0 or tokens.get("total", 0) > 0:
+                detail_col1, detail_col2 = st.columns(2)
+                with detail_col1:
+                    st.caption(f"⚡ Generation: {gen_time:.3f}s")
+                with detail_col2:
+                    if tokens.get("total"):
+                        st.caption(f"🔢 Tokens: {tokens.get('total', 0)}")
+            
+            # Show answer preview if not the best model
+            if i > 1:
+                with st.expander(f"View {model_name} Answer", expanded=False):
+                    answer = result.get("answer", "No answer")
+                    st.markdown(answer[:500] + ("..." if len(answer) > 500 else ""))
+            
+            if i < len(all_results):
+                st.markdown("---")
 
 
 def _render_sources_section(sources: List[Dict], msg_index: int):
@@ -227,6 +306,7 @@ def _process_question(api, question: str):
     """Process a user question."""
     
     config = api.get_config() or {}
+    comparison_mode = get_state("comparison_mode", False)
     
     # Add user message
     user_msg = {
@@ -239,57 +319,123 @@ def _process_question(api, question: str):
     chat_messages.append(user_msg)
     set_state("chat_messages", chat_messages)
     
-    # Get response
-    with st.spinner("🔍 Searching documents and generating response..."):
-        try:
-            start_time = time.time()
-            
-            response = api.query(question, top_k=config.get("TOP_K", 5))
-            processing_time = time.time() - start_time
-            
-            # Calculate confidence
-            sources = response.get("sources", [])
-            avg_confidence = 0.0
-            if sources:
-                similarities = [src.get('similarity', 0.0) for src in sources]
-                avg_confidence = sum(similarities) / len(similarities)
-            
-            # Add assistant response
-            assistant_msg = {
-                "role": "assistant",
-                "content": response.get("answer", "I couldn't find relevant information."),
-                "sources": sources,
-                "confidence": avg_confidence,
-                "response_time": processing_time,
-                "timestamp": time.time()
-            }
-            
-            chat_messages.append(assistant_msg)
-            set_state("chat_messages", chat_messages)
-            
-            # Update conversation history
-            conv_history = get_state("conversation_history", [])
-            conv_history.append({
-                "question": question,
-                "answer": response.get("answer", ""),
-                "confidence": avg_confidence
-            })
-            set_state("conversation_history", conv_history)
-            
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-            
-            error_msg = {
-                "role": "assistant",
-                "content": f"Sorry, I encountered an error: {str(e)}",
-                "sources": [],
-                "confidence": 0.0,
-                "timestamp": time.time()
-            }
-            chat_messages.append(error_msg)
-            set_state("chat_messages", chat_messages)
+    # Get response (comparison or standard)
+    if comparison_mode:
+        with st.spinner("🔬 Comparing models and evaluating responses..."):
+            try:
+                start_time = time.time()
+                
+                response = api.compare_models(question, top_k=config.get("TOP_K", 5))
+                processing_time = time.time() - start_time
+                
+                # Format comparison results
+                assistant_msg = _format_comparison_response(response, processing_time)
+                
+            except Exception as e:
+                st.error(f"❌ Comparison Error: {str(e)}")
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": f"Sorry, model comparison failed: {str(e)}",
+                    "sources": [],
+                    "confidence": 0.0,
+                    "timestamp": time.time(),
+                    "is_comparison": True
+                }
+    else:
+        # Normal mode - single model
+        with st.spinner("🔍 Searching documents and generating response..."):
+            try:
+                start_time = time.time()
+                
+                response = api.query(question, top_k=config.get("TOP_K", 5))
+                processing_time = time.time() - start_time
+                
+                # Calculate confidence
+                sources = response.get("sources", [])
+                avg_confidence = 0.0
+                if sources:
+                    similarities = [src.get('similarity', 0.0) for src in sources]
+                    avg_confidence = sum(similarities) / len(similarities)
+                
+                # Add assistant response
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": response.get("answer", "I couldn't find relevant information."),
+                    "sources": sources,
+                    "confidence": avg_confidence,
+                    "response_time": processing_time,
+                    "timestamp": time.time()
+                }
+                
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": f"Sorry, an error occurred: {str(e)}",
+                    "sources": [],
+                    "confidence": 0.0,
+                    "timestamp": time.time()
+                }
+    
+    # Common code for both modes
+    chat_messages.append(assistant_msg)
+    set_state("chat_messages", chat_messages)
+    
+    # Update conversation history (for normal mode)
+    if not comparison_mode:
+        conv_history = get_state("conversation_history", [])
+        conv_history.append({
+            "question": question,
+            "answer": assistant_msg.get("content", ""),
+            "confidence": assistant_msg.get("confidence", 0.0)
+        })
+        set_state("conversation_history", conv_history)
+    
+    st.rerun()
+
+
+def _format_comparison_response(response: Dict, processing_time: float) -> Dict:
+    """Format model comparison results into a message."""
+    
+    results = response.get("results", [])
+    best_model = response.get("best_model", "Unknown")
+    
+    if not results:
+        return {
+            "role": "assistant",
+            "content": "No comparison results available.",
+            "sources": [],
+            "confidence": 0.0,
+            "timestamp": time.time(),
+            "is_comparison": True
+        }
+    
+    # Use the best model's answer
+    best_result = results[0]
+    content = best_result.get("answer", "No answer available")
+    
+    # Extract sources from response
+    sources = response.get("sources", [])
+    
+    # Get scores
+    scores = best_result.get("scores", {})
+    overall_score = scores.get("overall", 0.0)
+    
+    return {
+        "role": "assistant",
+        "content": content,
+        "sources": sources,
+        "confidence": overall_score,
+        "response_time": processing_time,
+        "timestamp": time.time(),
+        "is_comparison": True,
+        "comparison_data": {
+            "best_model": best_model,
+            "models_compared": len(results),
+            "all_results": results,
+            "context_chunks": response.get("context_chunks", 0)
+        }
+    }
 
 
 def _render_follow_up_suggestions(api):
