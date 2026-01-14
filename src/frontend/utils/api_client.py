@@ -36,7 +36,7 @@ class APIClient:
         try:
             response = self.session.get(
                 f"{self.base_url}/health",
-                timeout=5,
+                timeout=15,
             )
             return response.status_code == 200
         except Exception as e:

@@ -69,11 +69,14 @@ class Settings(BaseSettings):
     )
     PRODUCTION: bool = Field(False, env="PRODUCTION")
     
-    # Logging Configuration
+    # Logging Configuration (Day-Wise)
+    BASE_LOG_DIR: str = Field("src/logs", env="BASE_LOG_DIR")
     LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
-    LOG_FILE: str = Field("logs/rag_system.log", env="LOG_FILE")
+    LOG_FILE: str = Field("logs/rag_system.log", env="LOG_FILE")  # Legacy backup
     LOG_MAX_BYTES: int = Field(10 * 1024 * 1024, env="LOG_MAX_BYTES")  # 10MB
     LOG_BACKUP_COUNT: int = Field(5, env="LOG_BACKUP_COUNT")
+    LOG_RETENTION_DAYS: int = Field(30, env="LOG_RETENTION_DAYS")  # Archive after 30 days
+    ENABLE_LOG_SYMLINKS: bool = Field(True, env="ENABLE_LOG_SYMLINKS")  # Create current/ symlinks
     MAX_SUGGESTED_QUESTIONS: int = Field(8, env="MAX_SUGGESTED_QUESTIONS")
     
     @validator("ALLOWED_EXTENSIONS", pre=True)

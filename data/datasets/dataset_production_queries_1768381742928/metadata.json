@@ -1,0 +1,16 @@
+{
+  "id": "dataset_production_queries_1768381742928",
+  "name": "production_queries",
+  "description": "All queries from Streamlit interface",
+  "version": "1.0.0",
+  "status": "draft",
+  "created_by": "system",
+  "created_at": "2026-01-14T09:09:02.928955",
+  "updated_at": "2026-01-14T10:05:27.141302",
+  "test_case_count": 7,
+  "tags": [],
+  "domain": "production",
+  "source": null,
+  "evaluation_metrics": {},
+  "opik_dataset_id": null
+}

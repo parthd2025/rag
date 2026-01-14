@@ -9,7 +9,7 @@ def render_system_dashboard(api_client):
     """System status."""
     try:
         import requests
-        resp = requests.get("http://localhost:8001/health", timeout=5)
+        resp = requests.get("http://localhost:8000/health", timeout=5)
         st.metric("API", "✅ Online" if resp.status_code == 200 else "⚠️ Offline")
     except:
         st.metric("API", "❌ Offline")

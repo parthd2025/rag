@@ -1,0 +1,163 @@
+[
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768382377464",
+    "question": "why employee needs a loan in mindbowser?",
+    "ground_truth_answer": "I cannot find information about this question in the provided documents. \n\nThe context provided discusses the loan policy for Mindbowser employees, including eligibility criteria, repayment terms, and procedures. However, it does not explicitly state why an employee might need a loan. \n\nThe purpose of the loan policy is mentioned as \"to support employees in managing unexpected financial needs\" (\ud83d\udcc4 Source: Loan Policy), but it does not provide specific examples or reasons why employees might require a loan. \n\nTo answer this question, more information about the company's benefits, employee support, or financial assistance programs would be necessary. Since this information is not available in the provided context, I cannot provide a detailed response.",
+    "context": "This policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company. Temporary, contract, consultants and probationary employees are not eligible for loans.\n---\nTo be eligible for a loan employees must meet the following criteria:\n---\nThe purpose of this policy is to provide guidelines and procedures for the provision of loans to employees. This policy aims to support employees in managing unexpected financial needs.",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T14:49:37.464822",
+      "sources_count": 5,
+      "average_similarity": 0.8081799999999999,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T09:19:37.464897"
+  },
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768382608059",
+    "question": "What is the purpose of the Employee Loan Policy?",
+    "ground_truth_answer": "The purpose of the Employee Loan Policy is clearly stated in the provided document context. According to the context, the purpose of this policy is:\n\n* \"to provide guidelines and procedures for the provision of loans to employees.\"\n* \"to support employees in managing unexpected financial needs.\"\n\nAs mentioned in the document context, this policy aims to provide a framework for employees to access loans, ensuring they have the necessary financial support during difficult times.\n\nHere are the key points related to the purpose and scope of the Employee Loan Policy:\n\n1. **Eligibility**: The policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company.\n2. **Objective**: The policy aims to support employees in managing unexpected financial needs by providing guidelines and procedures for loan provision.\n3. **Scope**: The policy outlines the criteria for loan eligibility, repayment terms, and consequences of non-repayment, such as an annual interest rate of 10% on outstanding balances.\n\nIt is essential to note that the policy also covers aspects related to resignation, termination, and repayment of outstanding loan amounts before the last working day. However, the primary purpose of the policy remains focused on providing financial support to employees during unexpected financial needs.\n\nReference: The information is based on the provided document context, specifically the sections titled \"Source: Loan Policy\" and \"Employee Loan Policy\".",
+    "context": "The purpose of this policy is to provide guidelines and procedures for the provision of loans to employees. This policy aims to support employees in managing unexpected financial needs.\n---\n## Employee Loan Policy\n---\nThis policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company. Temporary, contract, consultants and probationary employees are not eligible for loans.",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T14:53:28.059066",
+      "sources_count": 5,
+      "average_similarity": 0.8114399999999999,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T09:23:28.059290"
+  },
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768383245538",
+    "question": "Who owns the Employee Loan Policy?",
+    "ground_truth_answer": "Based on the provided document context, the information about who owns the Employee Loan Policy is partially available. \n\nAccording to the document context:\n- The section \"Policy Owner:\" is present, but it does not contain any specific information about the owner of the policy. \n\nThe relevant quote from the context is:\n\"Policy Owner:\"\n\nSince the \"Policy Owner:\" section is empty, I can only state what I found and what specific information is missing:\n* The document context mentions a \"Policy Owner:\" section, indicating that policy ownership information should be provided.\n* However, the actual owner of the Employee Loan Policy is not specified in the given context.\n\nTherefore, I can conclude that the information about the policy owner is not available in the provided documents.",
+    "context": "## Employee Loan Policy\n---\nThis policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company. Temporary, contract, consultants and probationary employees are not eligible for loans.\n---\nPolicy Owner:",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T15:04:05.538736",
+      "sources_count": 5,
+      "average_similarity": 0.7839400000000001,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T09:34:05.538775"
+  },
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768384026487",
+    "question": "Test: What is this system?",
+    "ground_truth_answer": "Based on the provided context from the Loan Policy document, the system being referred to appears to be a loan system for employees. Here's a breakdown of the information available:\n\n1. **Definition of a Loan**: The context defines a loan as \"A sum of money lent to an employee to be repaid over a specified period.\" This indicates that the system involves lending money to employees with the expectation of repayment.\n\n2. **Application Process**: Although the context mentions an \"Application Process\" section, it does not provide details about what this process entails. It is implied that there is a structured way for employees to apply for loans, but the specifics are not given.\n\n3. **Request Loan Declaration Form**: There is a mention of a \"Request Loan Declaration Form,\" suggesting that part of the loan application process might involve filling out a specific form. However, the details of this form and its requirements are not provided in the context.\n\n4. **Loan Policy Sections**: The context references different sections of the Loan Policy document, including \"Application Process,\" \"Loan,\" \"Definition,\" and \"Request Loan Declaration Form.\" This suggests that the Loan Policy is a comprehensive document that outlines various aspects of the loan system for employees.\n\nGiven the information available, the system in question seems to be designed to facilitate loans to employees, with a defined application process and repayment terms. However, specific details about the application process, the request loan declaration form, and other potential aspects of the loan system are not fully elaborated in the provided context.\n\nTo summarize, the key points about the system are:\n- It involves lending money to employees.\n- There is an application process, though its specifics are not detailed.\n- A Request Loan Declaration Form is part of the process.\n- Loans are to be repaid over a specified period.\n\nMore detailed information about the system, such as eligibility criteria, interest rates, repayment schedules, and consequences of default, is not provided in the context.",
+    "context": "## Application Process:\n---\nLoan:\n---\n## Definition:",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T15:17:06.487157",
+      "sources_count": 5,
+      "average_similarity": 0.59726,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T09:47:06.487215"
+  },
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768384312832",
+    "question": "Test dataset insertion: What are the key features of this system?",
+    "ground_truth_answer": "Based on the provided document context, the key features of this system are related to the loan policy for employees. The main aspects of this system can be summarized as follows:\n\n1. **Purpose**: The purpose of this policy is to \"provide guidelines and procedures for the provision of loans to employees\" to support them in managing unexpected financial needs.\n2. **Eligibility Criteria**: Although the document mentions that there are criteria to be eligible for a loan, it does not specify what these criteria are. It only provides a section titled \"## Eligibility Criteria\" but does not list the actual criteria.\n3. **Application Process**: The application process involves:\n   - Completing all necessary details in the form.\n   - Ensuring accuracy and completeness of the information provided.\n   - Submitting the filled Loan Declaration Form through the HROne portal.\n4. **Approval Process**: After submitting the application, it will be forwarded to the respective authority for approval. The possible outcomes are:\n   - If the loan is approved: The employee will receive a notification regarding the approval.\n   - If the loan is not approved: The employee will be notified of the rejection.\n\nUnfortunately, the provided context does not specify the eligibility criteria, which is a crucial aspect of the loan policy. The information available directly answers some parts of the question but lacks specific details about the eligibility criteria.",
+    "context": "Loan:\n---\nThe purpose of this policy is to provide guidelines and procedures for the provision of loans to employees. This policy aims to support employees in managing unexpected financial needs.\n---\nTo be eligible for a loan employees must meet the following criteria:",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T15:21:52.832141",
+      "sources_count": 5,
+      "average_similarity": 0.5721999999999999,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T09:51:52.832178"
+  },
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768385078710",
+    "question": "What are the key loan policy guidelines?",
+    "ground_truth_answer": "The key loan policy guidelines can be summarized as follows:\n\nTo be eligible for a loan, employees must meet specific criteria, as stated in the Loan Policy document. The main guidelines are:\n\n* The policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company, as mentioned in the section \"This policy applies to all full-time and part-time employees of Mindbowser who have completed a minimum of 2 years of continuous service with the company.\"\n* The following types of employees are not eligible for loans: Temporary, contract, consultants, and probationary employees.\n* To qualify for a loan, employees must meet the following conditions:\n  - Have completed two years of continuous service with Mindbowser.\n  - Have no outstanding loans or advances with the company.\n  - Demonstrate a valid financial need, such as medical emergencies or unforeseen personal expenses.\n  - Should not be under a Performance Improvement Plan (PIP) in the last six months from the date of loan application.\n  - Should not be serving a notice period.\n\nAs stated in the document, \"To be eligible for a loan employees must meet the following criteria,\" and the criteria are further detailed in the subsequent sections. The purpose of the loan policy is \"to provide guidelines and procedures for the provision of loans to employees\" and \"to support employees in managing unexpected financial needs.\" \n\nThese guidelines are essential to understanding the loan policy and determining eligibility for loans.",
+    "context": "The purpose of this policy is to provide guidelines and procedures for the provision of loans to employees. This policy aims to support employees in managing unexpected financial needs.\n---\nLoan:\n---\nTo be eligible for a loan employees must meet the following criteria:",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T15:34:38.710425",
+      "sources_count": 5,
+      "average_similarity": 0.78994,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T10:04:38.710455"
+  },
+  {
+    "id": "tc_dataset_production_queries_1768381742928_1768385127141",
+    "question": "loan amount?",
+    "ground_truth_answer": "According to the provided Loan Policy document, the loan amount is specified in the section \"Loan Amount and Terms\". The key points regarding the loan amount are:\n\n* The maximum loan amount shall not exceed **3 times the employee's monthly gross salary** or **3 Lakhs**, whichever is lower.\n* This information is directly stated in the document as: \"- The maximum loan amount shall not exceed 3 times the employee's monthly gross salary or 3 Lakhs whichever is lower.\"\n\nTo summarize, the loan amount is capped at the lower of two values: \n1. Three times the employee's monthly gross salary\n2. 3 Lakhs\n\nNo additional information is provided regarding the minimum loan amount or any exceptions to this rule. The loan amount is subject to the repayment conditions outlined in the document, including a repayment period not exceeding 12 months and monthly deductions from the employee's payroll.",
+    "context": "Loan:\n---\n## Loan Amount and Terms\n---\n- The maximum loan amount shall not exceed 3 times the employee's monthly gross salary or 3 Lakhs whichever is lower. - Interest will not be applicable on the loan amount. - Repayment period cannot exceed 12 months. - Loan repayment will commence from the next payroll cycle after the loan is disbursed and will be deducted monthly.",
+    "expected_sources": [
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy",
+      "Loan Policy"
+    ],
+    "difficulty_level": "medium",
+    "category": "production",
+    "metadata": {
+      "timestamp": "2026-01-14T15:35:27.141154",
+      "sources_count": 5,
+      "average_similarity": 0.8122400000000001,
+      "top_k": 5,
+      "temperature": 0.3
+    },
+    "created_at": "2026-01-14T10:05:27.141255"
+  }
+]

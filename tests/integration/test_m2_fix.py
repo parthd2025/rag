@@ -16,7 +16,7 @@ def test_m2_queries():
         "transportation benefits M2"
     ]
     
-    api_url = "http://localhost:8001"
+    api_url = "http://localhost:8000"
     
     print("=== Testing M2 Mileage Retrieval ===")
     

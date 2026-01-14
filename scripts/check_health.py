@@ -96,7 +96,7 @@ def check_api():
     """Try to connect to running API (if available)."""
     try:
         import requests
-        response = requests.get("http://localhost:8001/health", timeout=2)
+        response = requests.get("http://localhost:8000/health", timeout=2)
         if response.status_code == 200:
             print("✅ API running at http://localhost:8001")
             return True

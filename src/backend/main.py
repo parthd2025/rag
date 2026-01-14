@@ -9,16 +9,18 @@ from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 import uvicorn
 
-from backend.config import settings
-from backend.logger_config import logger
-from backend.ingest import DocumentIngestor
-from backend.vectorstore import FAISSVectorStore
-from backend.llm_loader import get_llm_engine
-from backend.rag_engine import RAGEngine
-from backend.services.chat_service_enhanced import EnhancedChatService
-from backend.services.tracked_chat_service import TrackedRAGService
-from backend.services.evaluation_service import ModelComparisonService, LLMEvaluator
-from backend.opik_config import initialize_opik, get_opik_manager
+from .config import settings
+from .logger_config import logger
+from .ingest import DocumentIngestor
+from .vectorstore import FAISSVectorStore
+from .llm_loader import get_llm_engine
+from .rag_engine import RAGEngine
+from .services.chat_service_enhanced import EnhancedChatService
+from .services.tracked_chat_service import TrackedRAGService
+from .services.evaluation_service import ModelComparisonService, LLMEvaluator
+from .services.dataset_service import DatasetService, DatasetStatus, TestCase
+from .services.dataset_evaluation import DatasetEvaluator, EvaluationMetric
+from .opik_config import initialize_opik, get_opik_manager
 
 
 class QueryRequest(BaseModel):
@@ -81,6 +83,47 @@ class EvaluationRequest(BaseModel):
     model_used: str = Field("unknown", description="Model that generated the answer")
 
 
+# ==================== Dataset Management Models ====================
+
+class CreateDatasetRequest(BaseModel):
+    """Request model for creating a dataset."""
+    name: str = Field(..., min_length=1, max_length=100, description="Dataset name")
+    description: str = Field(..., min_length=1, description="Dataset description")
+    version: str = Field("1.0.0", description="Dataset version")
+    domain: Optional[str] = Field(None, description="Domain/category (e.g., automotive)")
+    tags: Optional[List[str]] = Field(None, description="Tags for categorization")
+
+
+class AddTestCaseRequest(BaseModel):
+    """Request model for adding a test case."""
+    question: str = Field(..., min_length=1, description="Test question")
+    ground_truth_answer: str = Field(..., min_length=1, description="Ground truth answer")
+    context: Optional[str] = Field(None, description="Optional context")
+    expected_sources: Optional[List[str]] = Field(None, description="Expected source documents")
+    difficulty_level: Optional[str] = Field("medium", description="easy/medium/hard")
+    category: Optional[str] = Field(None, description="Test case category")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+
+
+class BatchTestCasesRequest(BaseModel):
+    """Request model for adding multiple test cases."""
+    test_cases: List[AddTestCaseRequest] = Field(..., description="List of test cases to add")
+
+
+class EvaluateDatasetRequest(BaseModel):
+    """Request model for evaluating a dataset."""
+    dataset_id: str = Field(..., description="Dataset ID to evaluate")
+    metrics: Optional[List[str]] = Field(None, description="Metrics to calculate")
+
+
+class DatasetResponse(BaseModel):
+    """Response model for dataset operations."""
+    status: str = Field(..., description="Operation status")
+    dataset_id: Optional[str] = Field(None, description="Dataset ID")
+    message: str = Field(..., description="Status message")
+    data: Optional[Dict[str, Any]] = Field(None, description="Additional data")
+
+
 # FastAPI app
 app = FastAPI(
     title="RAG Chatbot API",
@@ -109,6 +152,8 @@ ingestor: Optional[DocumentIngestor] = None
 enhanced_chat_service = None
 tracked_rag_service: Optional[TrackedRAGService] = None
 model_comparison_service: Optional[ModelComparisonService] = None
+dataset_service: Optional[DatasetService] = None
+dataset_evaluator: Optional[DatasetEvaluator] = None
 
 runtime_settings: Dict[str, Any] = {
     "chunking_level": settings.CHUNKING_LEVEL,
@@ -191,6 +236,8 @@ Questions should be:
 def init_components() -> None:
     """Initialize all components with proper error handling and comprehensive logging."""
     global vector_store, llm_engine, rag_engine, ingestor, runtime_settings
+    global enhanced_chat_service, tracked_rag_service
+    global dataset_service, dataset_evaluator
     
     logger.info("=== Starting RAG system initialization flow ===")
     
@@ -260,6 +307,13 @@ def init_components() -> None:
         logger.info("INIT STEP 5b: Initializing TrackedRAGService with LiteLLM + Opik")
         tracked_rag_service = TrackedRAGService(rag_engine)
         logger.info("INIT STEP 5 COMPLETE: Chat services initialized with full Opik tracing")
+        
+        # Step 6: Initialize Dataset service and evaluator
+        logger.info("INIT STEP 6: Initializing Dataset service and evaluator")
+        global dataset_service, dataset_evaluator
+        dataset_service = DatasetService(storage_path="data/datasets")
+        dataset_evaluator = DatasetEvaluator(dataset_service)
+        logger.info("INIT STEP 6 COMPLETE: Dataset services initialized")
         
         logger.info("=== RAG system initialization flow COMPLETE ===")
         
@@ -669,6 +723,84 @@ async def chat(req: QueryRequest) -> QueryResponse:
         
         if result.get("answer"):
             logger.info(f"CHAT STEP 4 COMPLETE: Query processed successfully, answer length: {len(result['answer'])} chars")
+            
+            # STEP 5: Auto-log query to datasets for OPIK tracking
+            try:
+                from datetime import datetime
+                
+                # Extract source information
+                sources = result.get("sources", [])
+                source_docs = [s.get("document_name", "Unknown") for s in sources]
+                avg_similarity = sum(s.get("similarity", 0.0) for s in sources) / len(sources) if sources else 0.0
+                
+                # Find the production_queries dataset ID
+                production_dataset_id = None
+                for dataset_id, dataset_meta in dataset_service.datasets.items():
+                    if dataset_meta.name == "production_queries":
+                        production_dataset_id = dataset_id
+                        break
+                
+                if production_dataset_id:
+                    # Log to local dataset
+                    logger.info("CHAT STEP 5: Auto-logging query to local dataset...")
+                    dataset_service.add_test_case(
+                        dataset_id=production_dataset_id,
+                        question=req.question,
+                        ground_truth_answer=result["answer"],
+                        context="\n---\n".join([s.get("chunk_preview", s.get("formatted_preview", "")) for s in sources[:3]]) if sources else "",
+                        expected_sources=source_docs,
+                        difficulty_level="medium",
+                        category="production",
+                        metadata={
+                            "timestamp": datetime.now().isoformat(),
+                            "sources_count": len(sources),
+                            "average_similarity": float(avg_similarity),
+                            "top_k": current_top_k,
+                            "temperature": current_temperature
+                        }
+                    )
+                    logger.info("CHAT STEP 5 COMPLETE: Query logged to local dataset")
+                else:
+                    logger.warning("CHAT STEP 5 SKIPPED: production_queries dataset not found")
+                
+                # Log to OPIK Cloud (if available and enabled) - Using proper dataset insertion
+                try:
+                    opik_manager = get_opik_manager()
+                    if opik_manager and opik_manager.available and opik_manager.client:
+                        logger.info("CHAT STEP 5B: Auto-logging query to OPIK Cloud dataset...")
+                        
+                        # Get or create the dataset
+                        import opik
+                        client = opik.Opik(project_name='rag-system')
+                        dataset = client.get_or_create_dataset(name="rag-system-db")
+                        
+                        # Insert item into dataset using proper format
+                        dataset_item = {
+                            "input": req.question,
+                            "expected_output": result["answer"],
+                            "user_question": req.question,
+                            "assistant_answer": result["answer"],
+                            "sources": source_docs,
+                            "metadata": {
+                                "timestamp": datetime.now().isoformat(),
+                                "sources_count": len(sources),
+                                "average_similarity": float(avg_similarity),
+                                "top_k": current_top_k,
+                                "temperature": current_temperature,
+                                "origin": "streamlit_production"
+                            }
+                        }
+                        
+                        # Insert the item into the dataset
+                        dataset.insert([dataset_item])
+                        
+                        logger.info("CHAT STEP 5B COMPLETE: Query logged to OPIK Cloud dataset 'rag-system-db'")
+                except Exception as opik_err:
+                    logger.warning(f"CHAT STEP 5B WARNING: Failed to log to OPIK Cloud: {opik_err}")
+                
+            except Exception as log_err:
+                logger.warning(f"CHAT STEP 5 WARNING: Failed to auto-log query: {log_err}", exc_info=False)
+            
             logger.info(f"=== Chat endpoint flow COMPLETE ===")
             return QueryResponse(answer=result["answer"], sources=result.get("sources", []))
         else:
@@ -973,6 +1105,256 @@ async def evaluate_response(req: EvaluationRequest) -> dict:
         )
 
 
+# ==================== DATASET MANAGEMENT ENDPOINTS ====================
+
+@app.post("/datasets/create", response_model=DatasetResponse)
+async def create_dataset(req: CreateDatasetRequest) -> DatasetResponse:
+    """Create a new dataset for RAG evaluation."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        dataset_id = dataset_service.create_dataset(
+            name=req.name,
+            description=req.description,
+            version=req.version,
+            domain=req.domain,
+            tags=req.tags,
+        )
+        
+        return DatasetResponse(
+            status="success",
+            dataset_id=dataset_id,
+            message=f"Dataset '{req.name}' created successfully"
+        )
+    except Exception as e:
+        logger.error(f"Failed to create dataset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.get("/datasets")
+async def list_datasets(status_filter: Optional[str] = None) -> dict:
+    """List all datasets."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        datasets = dataset_service.list_datasets()
+        
+        if status_filter:
+            datasets = [d for d in datasets if d.status.value == status_filter]
+        
+        return {
+            "status": "success",
+            "count": len(datasets),
+            "datasets": [d.to_dict() for d in datasets]
+        }
+    except Exception as e:
+        logger.error(f"Failed to list datasets: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.get("/datasets/{dataset_id}")
+async def get_dataset(dataset_id: str) -> dict:
+    """Get dataset metadata and test cases."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        metadata = dataset_service.get_dataset(dataset_id)
+        if not metadata:
+            raise ValueError(f"Dataset not found: {dataset_id}")
+        
+        test_cases = dataset_service.get_test_cases(dataset_id)
+        stats = dataset_service.get_statistics(dataset_id)
+        
+        return {
+            "status": "success",
+            "metadata": metadata.to_dict(),
+            "test_case_count": len(test_cases),
+            "statistics": stats
+        }
+    except Exception as e:
+        logger.error(f"Failed to get dataset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.post("/datasets/{dataset_id}/test-cases")
+async def add_test_case(dataset_id: str, req: AddTestCaseRequest) -> DatasetResponse:
+    """Add a test case to a dataset."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        test_case_id = dataset_service.add_test_case(
+            dataset_id=dataset_id,
+            question=req.question,
+            ground_truth_answer=req.ground_truth_answer,
+            context=req.context,
+            expected_sources=req.expected_sources,
+            difficulty_level=req.difficulty_level,
+            category=req.category,
+            metadata=req.metadata,
+        )
+        
+        return DatasetResponse(
+            status="success",
+            dataset_id=dataset_id,
+            message=f"Test case added successfully",
+            data={"test_case_id": test_case_id}
+        )
+    except Exception as e:
+        logger.error(f"Failed to add test case: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.post("/datasets/{dataset_id}/test-cases/batch")
+async def add_test_cases_batch(dataset_id: str, req: BatchTestCasesRequest) -> DatasetResponse:
+    """Add multiple test cases to a dataset."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        test_case_data = [tc.dict() for tc in req.test_cases]
+        test_case_ids = dataset_service.add_test_cases_batch(
+            dataset_id=dataset_id,
+            test_cases=test_case_data,
+        )
+        
+        return DatasetResponse(
+            status="success",
+            dataset_id=dataset_id,
+            message=f"Added {len(test_case_ids)} test cases successfully",
+            data={"test_case_count": len(test_case_ids)}
+        )
+    except Exception as e:
+        logger.error(f"Failed to add batch test cases: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.post("/datasets/{dataset_id}/evaluate")
+async def evaluate_dataset(dataset_id: str, req: EvaluateDatasetRequest) -> dict:
+    """Evaluate dataset against RAG system."""
+    try:
+        if not dataset_service or not dataset_evaluator or not rag_engine:
+            raise ValueError("Required services not initialized")
+        
+        # Convert metric strings to enum
+        metrics = None
+        if req.metrics:
+            metrics = [EvaluationMetric(m) for m in req.metrics]
+        
+        # Run evaluation
+        result = dataset_evaluator.evaluate_dataset(
+            dataset_id=dataset_id,
+            rag_engine=rag_engine,
+            metrics=metrics,
+        )
+        
+        return {
+            "status": "success",
+            "dataset_id": dataset_id,
+            "evaluation": result.to_dict()
+        }
+    except Exception as e:
+        logger.error(f"Failed to evaluate dataset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.get("/datasets/{dataset_id}/export")
+async def export_dataset(dataset_id: str, format: str = "json") -> dict:
+    """Export dataset in specified format."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        data = dataset_service.export_dataset(dataset_id, format=format)
+        
+        return {
+            "status": "success",
+            "dataset_id": dataset_id,
+            "format": format,
+            "data": data
+        }
+    except Exception as e:
+        logger.error(f"Failed to export dataset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.put("/datasets/{dataset_id}/status")
+async def update_dataset_status(dataset_id: str, status: str) -> DatasetResponse:
+    """Update dataset status (draft, active, archived, deprecated)."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        dataset_status = DatasetStatus(status)
+        dataset_service.update_dataset_status(dataset_id, dataset_status)
+        
+        return DatasetResponse(
+            status="success",
+            dataset_id=dataset_id,
+            message=f"Dataset status updated to {status}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to update dataset status: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@app.post("/datasets/{dataset_id}/sync-opik")
+async def sync_dataset_to_opik(dataset_id: str) -> DatasetResponse:
+    """Sync dataset to OPIK cloud."""
+    try:
+        if not dataset_service:
+            raise ValueError("Dataset service not initialized")
+        
+        opik_id = dataset_service.sync_to_opik(dataset_id)
+        
+        if opik_id:
+            return DatasetResponse(
+                status="success",
+                dataset_id=dataset_id,
+                message="Dataset synced to OPIK successfully",
+                data={"opik_dataset_id": opik_id}
+            )
+        else:
+            return DatasetResponse(
+                status="warning",
+                dataset_id=dataset_id,
+                message="Dataset sync to OPIK not available"
+            )
+    except Exception as e:
+        logger.error(f"Failed to sync dataset to OPIK: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @app.get("/")
 async def root() -> dict:
     """API information endpoint."""
@@ -990,7 +1372,16 @@ async def root() -> dict:
             "documents": "GET /documents",
             "documents/reload": "POST /documents/reload",
             "documents/{name}": "DELETE /documents/{name}",
-            "clear": "DELETE /clear"
+            "clear": "DELETE /clear",
+            "datasets/create": "POST /datasets/create",
+            "datasets": "GET /datasets",
+            "datasets/{id}": "GET /datasets/{dataset_id}",
+            "datasets/{id}/test-cases": "POST /datasets/{dataset_id}/test-cases",
+            "datasets/{id}/test-cases/batch": "POST /datasets/{dataset_id}/test-cases/batch",
+            "datasets/{id}/evaluate": "POST /datasets/{dataset_id}/evaluate",
+            "datasets/{id}/export": "GET /datasets/{dataset_id}/export",
+            "datasets/{id}/status": "PUT /datasets/{dataset_id}/status",
+            "datasets/{id}/sync-opik": "POST /datasets/{dataset_id}/sync-opik",
         },
         "status": "operational"
     }
